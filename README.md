@@ -65,7 +65,7 @@ The idea behind this project is that everyone uses **the same channel** for ward
 - **Name:** `wardriving`
 - **Key (PSK):** `AQ==`
 
-`AQ==` is Meshtastic's default public key, the same one the standard LongFast channel uses. Since everybody knows it, the channel is in practice **unencrypted**: anyone who adds it can read the pings, including your coordinates if you enable "Include coordinates in the message".
+`AQ==` is Meshtastic's default public key. Since everybody knows it, the channel is in practice **unencrypted**: anyone who adds it can read the pings, including your coordinates if you enable "Include coordinates in the message".
 
 This is a proposal, not a requirement. **The choice is ultimately yours:** you can use a private key so only your group sees the pings, or a different channel name (set it in **Settings**). The app works the same either way.
 
