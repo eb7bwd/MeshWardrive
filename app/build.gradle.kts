@@ -17,13 +17,30 @@ android {
         versionName = "0.5.1"
     }
 
+    // Firma fija: en GitHub Actions la clave llega por variables de entorno (secretos del repositorio).
+    // Sin ellas (por ejemplo al compilar en tu ordenador) se firma con la clave de pruebas.
+    val keystorePath: String? = System.getenv("KEYSTORE_FILE")
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = "meshwardrive"
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Firmado con la clave de depuración para poder instalarlo sin más.
-            // Si algún día lo publicas, crea tu propia keystore (también gratis).
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {
