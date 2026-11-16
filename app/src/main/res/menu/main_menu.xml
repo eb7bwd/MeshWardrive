@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_target"
+        android:title="Nodo destino…"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_layers"
+        android:title="Capas del mapa"
+        app:showAsAction="never">
+        <menu>
+            <group android:checkableBehavior="all">
+                <item android:id="@+id/layer_cells" android:title="Celdas de cobertura (pings)" />
+                <item android:id="@+id/layer_pings" android:title="Puntos de ping" />
+                <item android:id="@+id/layer_passive" android:title="Recepción pasiva" />
+                <item android:id="@+id/layer_nodes" android:title="Nodos con posición" />
+            </group>
+        </menu>
+    </item>
+    <item android:id="@+id/action_log" android:title="Registro" app:showAsAction="never" />
+    <item android:id="@+id/action_export_pings" android:title="Exportar pings (CSV)" app:showAsAction="never" />
+    <item android:id="@+id/action_export_rx" android:title="Exportar recepción pasiva (CSV)" app:showAsAction="never" />
+    <item android:id="@+id/action_export_geojson" android:title="Exportar todo (GeoJSON)" app:showAsAction="never" />
+    <item android:id="@+id/action_settings" android:title="Ajustes" app:showAsAction="never" />
+    <item android:id="@+id/action_clear" android:title="Borrar mediciones" app:showAsAction="never" />
+</menu>

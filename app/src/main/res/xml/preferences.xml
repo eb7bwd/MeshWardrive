@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:iconSpaceReserved="false" app:title="@string/ping">
+        <ListPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="channel"
+            app:entries="@array/mode_entries"
+            app:entryValues="@array/mode_values"
+            app:key="mode"
+            app:title="@string/pref_mode"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="wardriving"
+            app:key="channel_name"
+            app:title="@string/pref_channel"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="30"
+            app:key="interval_s"
+            app:title="@string/pref_interval"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="50"
+            app:key="min_distance_m"
+            app:title="@string/pref_distance"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="1"
+            app:key="hop_limit"
+            app:title="@string/pref_hop"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="90"
+            app:key="ack_timeout_s"
+            app:title="@string/pref_timeout"
+            app:useSimpleSummaryProvider="true" />
+        <SwitchPreferenceCompat
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="true"
+            app:key="include_coords"
+            app:summary="@string/pref_coords_sum"
+            app:title="@string/pref_coords" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:iconSpaceReserved="false" app:title="@string/pref_cat_gps">
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="50"
+            app:key="max_accuracy_m"
+            app:title="@string/pref_accuracy"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:iconSpaceReserved="false"
+            app:singleLineTitle="false"
+            app:defaultValue="150"
+            app:key="cell_size_m"
+            app:title="@string/pref_cell"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+</PreferenceScreen>
