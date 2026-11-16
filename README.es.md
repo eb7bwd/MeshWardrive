@@ -58,9 +58,20 @@ Cinco pestañas que se cambian deslizando o con la barra inferior: **Mapa**, **C
 
 Inglés, español, francés, italiano, portugués, alemán, ruso, árabe, griego y japonés. La app sigue el idioma del teléfono; en Android 13 o posterior también se puede elegir por aplicación en los ajustes del sistema. Las traducciones son automáticas y se agradecen correcciones.
 
+## El canal `wardriving`: una propuesta de estándar
+
+La idea del proyecto es que todo el mundo use **el mismo canal** para hacer wardriving, de modo que los pings de distintas personas sean comparables y cualquiera pueda verlos y registrarlos:
+
+- **Nombre:** `wardriving`
+- **Clave (PSK):** `AQ==`
+
+`AQ==` es la clave pública por defecto de Meshtastic, la misma que usa el canal LongFast estándar. Como la conoce todo el mundo, el canal va en la práctica **sin cifrar**: cualquiera que lo añada puede leer los pings, incluidas tus coordenadas si activas «Incluir coordenadas en el mensaje».
+
+Es una propuesta, no una obligación. **La elección es en última instancia tuya:** puedes usar una clave privada para que solo tu grupo vea los pings, o un nombre de canal distinto (se cambia en **Ajustes**). La app funciona igual en cualquier caso.
+
 ## Cómo usarla
 
-1. Crea en tu nodo un canal secundario llamado `wardriving` con la app oficial de Meshtastic.
+1. Crea en tu nodo un canal secundario llamado `wardriving` con clave `AQ==` usando la app oficial de Meshtastic (ver arriba).
 2. Cierra la app oficial (el nodo solo admite una conexión Bluetooth).
 3. Abre MeshWardrive, acepta el aviso, ve a **Conexión**, pulsa **Buscar y conectar** y elige tu nodo.
 4. En **Mapa**, pulsa **Iniciar** y muévete.
@@ -124,6 +135,33 @@ Desde la pestaña **Datos**:
 | KML | Celdas, pings y nodos en carpetas. Para Google Earth y OsmAnd. |
 | Puntos GeoJSON | Cada ping y cada paquete oído, con todos sus datos. |
 | CSV | Pings y recepción pasiva en tablas. Para hojas de cálculo. |
+
+### Cómo usar cada exportación
+
+Todas las exportaciones incluyen solo los wardrives elegidos en **Wardrives mostrados**.
+
+**Imagen PNG.** Una foto del mapa tal como lo ves en ese momento, así que ajusta antes el zoom y las capas. Sirve para compartir por chat o redes, o para pegar en un documento.
+
+**Celdas GeoJSON** (`coverage-cells-….geojson`). El mapa de cobertura listo para publicar.
+- *geojson.io*: abre la web y arrastra el archivo sobre el mapa. Las celdas salen ya coloreadas.
+- *uMap*: crea un mapa, pulsa **Importar datos** y elige el archivo. Útil para tener un mapa online que compartir.
+- *QGIS*: arrastra el archivo a la ventana. Coloréalo por el campo `class` (`good`, `marginal`, `weak`, `no_coverage`) o por `success_pct`.
+- Campos de cada celda: `pings`, `ok`, `fail`, `success_pct`, `best_snr`, `avg_snr`. Las celdas con `layer` = `rx` son de recepción pasiva.
+
+**KML** (`coverage-….kml`). Para verlo en un globo o en una app de navegación.
+- *Google Earth*: en el ordenador, **Archivo → Importar archivo KML**; en el móvil, abre el archivo con Google Earth.
+- *OsmAnd*: abre el archivo con OsmAnd, o impórtalo como favorito o traza.
+- Trae cuatro carpetas que se pueden activar y desactivar: celdas de cobertura, pings, recepción pasiva y nodos. Toca cualquier elemento para ver su detalle.
+
+**Puntos GeoJSON** (`wardrive-….geojson`). Cada medición por separado, para tu propio análisis.
+- *QGIS* o *kepler.gl*: carga el archivo y colorea los puntos por `status`, `relay_snr` o `snr`.
+- El campo `kind` separa los pings (`ping`) de los paquetes oídos (`rx`).
+- Úsalo si quieres otra rejilla o tu propio mapa de calor.
+
+**CSV** (`wardrive-pings-….csv` y `wardrive-rx-….csv`). Tablas para hojas de cálculo y scripts.
+- Ábrelos con LibreOffice Calc o Excel (separador coma, UTF-8).
+- Pings: una fila por ping, con hora, posición, estado, error, latencia, relay y SNR/RSSI.
+- Recepción pasiva: una fila por paquete oído, con nodo de origen, puerto, SNR, RSSI, saltos y relay.
 
 ## Compilar
 

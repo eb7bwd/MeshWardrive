@@ -58,9 +58,20 @@ Five tabs, switched by swiping or with the bottom bar: **Map**, **Connection**, 
 
 English, Spanish, French, Italian, Portuguese, German, Russian, Arabic, Greek and Japanese. The app follows the phone's language; on Android 13 or later you can also choose it per app in the system settings. Translations were machine-generated and corrections are welcome.
 
+## The `wardriving` channel: a proposed standard
+
+The idea behind this project is that everyone uses **the same channel** for wardriving, so that pings from different people are comparable and anyone can see and log them:
+
+- **Name:** `wardriving`
+- **Key (PSK):** `AQ==`
+
+`AQ==` is Meshtastic's default public key, the same one the standard LongFast channel uses. Since everybody knows it, the channel is in practice **unencrypted**: anyone who adds it can read the pings, including your coordinates if you enable "Include coordinates in the message".
+
+This is a proposal, not a requirement. **The choice is ultimately yours:** you can use a private key so only your group sees the pings, or a different channel name (set it in **Settings**). The app works the same either way.
+
 ## How to use it
 
-1. Create a secondary channel named `wardriving` on your node with the official Meshtastic app.
+1. Create a secondary channel named `wardriving` with key `AQ==` on your node with the official Meshtastic app (see above).
 2. Close the official app (the node accepts only one Bluetooth connection).
 3. Open MeshWardrive, accept the notice, go to **Connection**, tap **Scan and connect** and choose your node.
 4. In **Map**, tap **Start** and move around.
@@ -124,6 +135,33 @@ From the **Data** tab:
 | KML | Cells, pings and nodes in folders. For Google Earth and OsmAnd. |
 | Points GeoJSON | Every ping and every packet heard, with all its data. |
 | CSV | Pings and passive reception as tables. For spreadsheets. |
+
+### How to use each export
+
+All exports include only the wardrives selected in **Wardrives shown**.
+
+**PNG image.** A picture of the map as you see it at that moment, so first set the zoom and the layers you want. Share it by chat or social media, or paste it into a document.
+
+**Cells GeoJSON** (`coverage-cells-….geojson`). The coverage map ready to publish.
+- *geojson.io*: open the site and drag the file onto the map. The cells appear already coloured.
+- *uMap*: create a map, then **Import data** and choose the file. Useful for a shareable online map.
+- *QGIS*: drag the file into the window. Colour it by the `class` field (`good`, `marginal`, `weak`, `no_coverage`) or by `success_pct`.
+- Fields per cell: `pings`, `ok`, `fail`, `success_pct`, `best_snr`, `avg_snr`. Cells with `layer` = `rx` are passive reception.
+
+**KML** (`coverage-….kml`). For viewing on a globe or in a navigation app.
+- *Google Earth*: on a computer, **File → Import KML file**; on a phone, open the file with Google Earth.
+- *OsmAnd*: open the file with OsmAnd, or import it as a favourite/track.
+- It has four folders you can switch on and off: coverage cells, pings, passive reception and nodes. Tap any item to see its details.
+
+**Points GeoJSON** (`wardrive-….geojson`). Every single measurement, for your own analysis.
+- *QGIS* or *kepler.gl*: load the file and colour the points by `status`, `relay_snr` or `snr`.
+- The `kind` field separates pings (`ping`) from packets heard (`rx`).
+- Use it if you want a different grid or your own heat map.
+
+**CSV** (`wardrive-pings-….csv` and `wardrive-rx-….csv`). Tables for spreadsheets and scripts.
+- Open them with LibreOffice Calc or Excel (comma separator, UTF-8).
+- Pings: one row per ping, with time, position, status, error, latency, relay and SNR/RSSI.
+- Passive reception: one row per packet heard, with origin node, port, SNR, RSSI, hops and relay.
 
 ## Build
 
