@@ -13,8 +13,8 @@ android {
         applicationId = "com.meshwardrive.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.5.1"
+        versionCode = 9
+        versionName = "0.5.2"
     }
 
     // Firma fija: en GitHub Actions la clave llega por variables de entorno (secretos del repositorio).

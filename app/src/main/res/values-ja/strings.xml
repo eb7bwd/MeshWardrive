@@ -178,6 +178,15 @@
     <string name="sessions_hint">地図、概要、グラフ、中継ノード、エクスポートに適用されます。</string>
     <string name="relay_direct">直接受信 %1$d回</string>
     <string name="relays_fw_note">お使いのノードのファームウェアは、誰がPingを中継したかを通知しません。下のノードは通信圏内にあるもの（直接受信、または他のパケットを中継）で、中継した可能性が高いノードです。</string>
+    <string name="next">次へ</string>
+    <string name="skip">スキップ</string>
+    <string name="tutorial_btn">チュートリアル</string>
+    <string name="tut_welcome">ようこそ。このクイックツアーではアプリの5つのタブを紹介します。スキップしても、設定からもう一度開けます。</string>
+    <string name="tut_conn">ここでノードに接続します。「検索して接続」をタップしてノードを選んでください。先に公式Meshtasticアプリを終了してください。Pingモード（チャンネル宛て／ノード宛て）もここで選びます。</string>
+    <string name="tut_map">「開始」は移動中に自動でPingを送信し、「Ping」はすぐに1回送信します。緑は誰かに届いた、赤は届かなかったことを示します。「レイヤー」で表示内容を選べます。上部のカードには状態と、Pingが送信されない場合はその理由が表示されます。</string>
+    <string name="tut_data">概要、ノイズのグラフ、通信圏内のノードを表示します。上部で表示するウォードライブを選べます。下の方では地図とデータのエクスポート、オフライン地図のインポートができます。</string>
+    <string name="tut_log">起きたことはすべてここに記録されます。うまくいかないときは、ログをコピーして相談してください。</string>
+    <string name="tut_settings">Pingの間隔と距離、ホップ上限、チャンネル名、セルサイズを設定します。最小距離を0にすると、停止中もPingを送信します。</string>
     <string name="disclaimer_title">重要なお知らせ</string>
     <string name="disclaimer_text">MeshWardriveは、EB7BWDが作成し、ほぼすべてを人工知能が開発した実験的なアプリです。コードは監査されておらず、誤りを含む可能性があります。\n\n本アプリは「現状のまま」提供され、動作、データの正確性、特定目的への適合性を含め、明示・黙示を問わずいかなる保証もありません。\n\n使用することで、次の点に同意したものとみなされます。\n\n• すべて自己責任で使用すること。\n\n• 電波の利用、デューティサイクルと出力、個人情報保護、道路交通など、お住まいの国の法令を守る責任はあなたにあること。\n\n• Pingは共有ネットワークの送信時間を消費します。配慮した設定にし、メッシュを混雑させない責任はあなたにあること。\n\n• 運転中にスマートフォンを操作しないこと。\n\n• カバレッジマップは目安であり、緊急時や安全に関わる通信の判断に使用しないこと。\n\n法律で認められる最大限の範囲で、作者は本アプリに起因するいかなる損害、損失、罰則、データ消失、誤用についても責任を負いません。\n\n同意できない場合は使用しないでください。</string>
     <string name="about_credits">企画・プロジェクト: EB7BWD\nコードはほぼすべてAI（AnthropicのClaude）で生成されています。\n\nGNU GPL v3（またはそれ以降）のフリーソフトウェアで、無保証です。\n\nMeshtasticおよびMeshMapperとは関係のない独立したプロジェクトです。Meshtastic®はMeshtastic LLCの登録商標です。\n\n地図 © OpenStreetMap contributors。osmdroid、AndroidX、Material Components、kotlinx.coroutines（Apache 2.0）およびMapsforge（LGPL v3）を使用しています。</string>

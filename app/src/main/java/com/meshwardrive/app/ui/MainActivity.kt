@@ -36,6 +36,7 @@ import androidx.viewpager.widget.PagerAdapter
 import androidx.viewpager.widget.ViewPager
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.util.TypedValue
@@ -224,6 +225,7 @@ class MainActivity : AppCompatActivity() {
         click(R.id.btnOffline) { showOfflineDialog() }
         click(R.id.btnClear) { confirmClear() }
         click(R.id.btnAbout) { showAbout() }
+        click(R.id.btnTutorial) { startTutorial() }
         click(R.id.btnCopyLog) {
             val text = WardriveState.log.value.joinToString("\n")
             getSystemService(ClipboardManager::class.java)
@@ -231,7 +233,12 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.log_copied))
         }
 
-        if (settings.disclaimerAccepted) askPermissions() else showDisclaimer()
+        if (settings.disclaimerAccepted) {
+            askPermissions()
+            if (!settings.tutorialSeen) startTutorial()
+        } else {
+            showDisclaimer()
+        }
 
         observeState()
     }
@@ -434,9 +441,42 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.accept) { _, _ ->
                 settings.disclaimerAccepted = true
                 askPermissions()
+                if (!settings.tutorialSeen) startTutorial()
             }
             .setNegativeButton(R.string.exit) { _, _ -> finish() }
             .show()
+    }
+
+    /**
+     * Recorrido por las pestañas: cada paso abre su pestaña y la explica en un cuadro abajo,
+     * para que se vea la pantalla de la que se habla. Se puede saltar en cualquier paso.
+     */
+    private fun startTutorial(step: Int = 0) {
+        val steps = listOf(
+            Triple(-1, R.string.app_name, R.string.tut_welcome),
+            Triple(1, R.string.tab_conn, R.string.tut_conn),
+            Triple(0, R.string.tab_map, R.string.tut_map),
+            Triple(2, R.string.tab_data, R.string.tut_data),
+            Triple(3, R.string.tab_log, R.string.tut_log),
+            Triple(4, R.string.tab_settings, R.string.tut_settings),
+        )
+        if (step >= steps.size) {
+            settings.tutorialSeen = true
+            pager.setCurrentItem(0, true)
+            return
+        }
+        val (page, title, body) = steps[step]
+        if (page >= 0) pager.setCurrentItem(page, true)
+        val last = step == steps.size - 1
+        val builder = MaterialAlertDialogBuilder(this)
+            .setTitle(getString(title) + "  (${step + 1}/${steps.size})")
+            .setMessage(body)
+            .setCancelable(false)
+            .setPositiveButton(if (last) R.string.close else R.string.next) { _, _ -> startTutorial(step + 1) }
+        if (!last) builder.setNegativeButton(R.string.skip) { _, _ -> startTutorial(steps.size) }
+        val dialog = builder.show()
+        dialog.window?.setGravity(Gravity.BOTTOM)
+        dialog.window?.setDimAmount(0.25f)
     }
 
     private fun showAbout() {

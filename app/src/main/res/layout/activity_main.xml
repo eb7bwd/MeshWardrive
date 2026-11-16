@@ -156,9 +156,12 @@
 
                 <Button
                     android:id="@+id/btnTarget"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:textAlignment="viewStart"
+                    app:icon="@drawable/ic_dropdown"
+                    app:iconGravity="end"
                     android:layout_marginTop="8dp"
                     android:text="@string/change_mode" />
 
@@ -184,8 +187,12 @@
 
                 <Button
                     android:id="@+id/btnSessions"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="wrap_content"
+                    android:textAlignment="viewStart"
+                    app:icon="@drawable/ic_dropdown"
+                    app:iconGravity="end" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -216,9 +223,12 @@
 
                 <Button
                     android:id="@+id/btnSession"
-                    style="@style/Widget.Material3.Button.TextButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAlignment="viewStart"
+                    app:icon="@drawable/ic_dropdown"
+                    app:iconGravity="end" />
 
                 <com.meshwardrive.app.ui.SignalChartView
                     android:id="@+id/chart"
@@ -321,9 +331,12 @@
 
                 <Button
                     android:id="@+id/btnOffline"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:textAlignment="viewStart"
+                    app:icon="@drawable/ic_dropdown"
+                    app:iconGravity="end"
                     android:layout_marginTop="8dp"
                     android:text="@string/offline_map" />
 
@@ -378,12 +391,31 @@
                 android:layout_height="0dp"
                 android:layout_weight="1" />
 
-            <Button
-                android:id="@+id/btnAbout"
-                style="@style/Widget.Material3.Button.TextButton"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/about_btn" />
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="4dp">
+
+                <Button
+                    android:id="@+id/btnTutorial"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:text="@string/tutorial_btn" />
+
+                <Button
+                    android:id="@+id/btnAbout"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="2"
+                    android:text="@string/about_btn" />
+            </LinearLayout>
         </LinearLayout>
     </com.meshwardrive.app.ui.PagesViewPager>
 

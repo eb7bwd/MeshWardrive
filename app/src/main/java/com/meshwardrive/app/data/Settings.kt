@@ -39,6 +39,10 @@ class Settings(ctx: Context) {
         get() = p.getBoolean("disclaimer_accepted_v1", false)
         set(v) = p.edit { putBoolean("disclaimer_accepted_v1", v) }
 
+    var tutorialSeen: Boolean
+        get() = p.getBoolean("tutorial_seen_v1", false)
+        set(v) = p.edit { putBoolean("tutorial_seen_v1", v) }
+
     var useOfflineMap: Boolean
         get() = p.getBoolean("use_offline_map", false)
         set(v) = p.edit { putBoolean("use_offline_map", v) }
