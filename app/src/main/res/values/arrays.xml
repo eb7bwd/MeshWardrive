@@ -3,9 +3,11 @@
     <string-array name="mode_entries">
         <item>@string/mode_channel_entry</item>
         <item>@string/mode_direct_entry</item>
+        <item>@string/mode_listen_entry</item>
     </string-array>
-    <string-array name="mode_values">
+    <string-array name="mode_values" translatable="false">
         <item>channel</item>
         <item>direct</item>
+        <item>listen</item>
     </string-array>
 </resources>

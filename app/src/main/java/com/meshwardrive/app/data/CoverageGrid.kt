@@ -91,6 +91,81 @@ object CoverageGrid {
         return cells.values.toList()
     }
 
+    // ------------------------------------------------------------------ huecos
+
+    /**
+     * Huecos cercanos: celdas sin medir que tocan a una celda medida. Son el borde de lo ya
+     * cubierto, que es por donde tiene sentido seguir. Se devuelven las más cercanas a un punto.
+     */
+    fun gapCells(pings: List<PingRow>, sizeM: Int, nearLat: Double?, nearLon: Double?, max: Int = 300): List<Cell> {
+        val size = sizeM.toDouble()
+        val measured = HashSet<Key>()
+        for (p in pings) measured.add(keyOf(p.lat, p.lon, size))
+        val gaps = HashSet<Key>()
+        for (k in measured) {
+            for (dy in -1..1) for (dx in -1..1) {
+                if (dx == 0 && dy == 0) continue
+                val n = Key(k.y + dy, k.x + dx)
+                if (n !in measured) gaps.add(n)
+            }
+        }
+        val cells = gaps.map { newCell(it, size) }
+        if (nearLat == null || nearLon == null) return cells.take(max)
+        return cells.sortedBy { Geo.distanceM(it.latC, it.lonC, nearLat, nearLon) }.take(max)
+    }
+
+    // ------------------------------------------------------------------ comparar
+
+    enum class Change { BETTER, WORSE, SAME, NEW, ONLY_BEFORE }
+
+    class DiffCell(val cell: Cell, val change: Change, val before: Cell?, val after: Cell?)
+
+    /**
+     * Compara dos grupos de pings celda a celda. Mejora o empeora si el porcentaje de éxito
+     * cambia 15 puntos o más, o, con el mismo éxito, si el mejor SNR cambia 3 dB o más.
+     */
+    fun diffCells(before: List<PingRow>, after: List<PingRow>, sizeM: Int): List<DiffCell> {
+        val size = sizeM.toDouble()
+        fun index(list: List<PingRow>): Map<Key, Cell> {
+            val m = LinkedHashMap<Key, Cell>()
+            for (p in list) {
+                val k = keyOf(p.lat, p.lon, size)
+                val c = m.getOrPut(k) { newCell(k, size) }
+                c.count++
+                when {
+                    p.status.isOk -> { c.ok++; c.addSnr(p.bestSnr) }
+                    p.status.isFail -> c.fail++
+                    else -> c.pending++
+                }
+            }
+            return m
+        }
+        val a = index(before)
+        val b = index(after)
+        val out = ArrayList<DiffCell>()
+        for ((k, cb) in b) {
+            val ca = a[k]
+            val change = when {
+                ca == null || ca.successPct == null -> Change.NEW
+                cb.successPct == null -> Change.SAME
+                else -> {
+                    val dp = cb.successPct!! - ca.successPct!!
+                    val ds = (cb.bestSnr ?: -99f) - (ca.bestSnr ?: -99f)
+                    when {
+                        dp >= 15 -> Change.BETTER
+                        dp <= -15 -> Change.WORSE
+                        cb.ok > 0 && ca.ok > 0 && ds >= 3f -> Change.BETTER
+                        cb.ok > 0 && ca.ok > 0 && ds <= -3f -> Change.WORSE
+                        else -> Change.SAME
+                    }
+                }
+            }
+            out.add(DiffCell(cb, change, ca, cb))
+        }
+        for ((k, ca) in a) if (k !in b) out.add(DiffCell(ca, Change.ONLY_BEFORE, ca, null))
+        return out
+    }
+
     fun snrColor(snr: Float?): Int = when {
         snr == null -> GOOD
         snr >= -7f -> GOOD

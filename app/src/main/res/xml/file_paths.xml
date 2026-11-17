@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Solo la carpeta temporal de archivos que se comparten -->
+    <cache-path
+        name="share"
+        path="share/" />
+</paths>

@@ -3,6 +3,7 @@ package com.meshwardrive.app.ui
 import com.meshwardrive.app.data.NodeEntry
 import com.meshwardrive.app.data.PingRow
 import com.meshwardrive.app.data.RxRow
+import com.meshwardrive.app.data.TextSafety
 import com.meshwardrive.app.proto.PortNum
 import com.meshwardrive.app.proto.RoutingError
 import org.json.JSONArray
@@ -26,8 +27,11 @@ object Exporter {
     private fun f1(v: Float?) = v?.let { String.format(Locale.US, "%.2f", it) } ?: ""
     private fun f7(v: Double?) = v?.let { String.format(Locale.US, "%.7f", it) } ?: ""
 
-    private fun csv(s: String): String =
-        if (s.any { it == ',' || it == '"' || it == '\n' }) "\"" + s.replace("\"", "\"\"") + "\"" else s
+    /** Celda CSV: se neutralizan fórmulas (texto que llega por radio) y se entrecomilla si hace falta. */
+    private fun csv(raw: String): String {
+        val s = TextSafety.csvCell(raw)
+        return if (s.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + s.replace("\"", "\"\"") + "\"" else s
+    }
 
     private fun candidates(relay: Int?, nodes: Map<Int, NodeEntry>, myNum: Int): String {
         if (relay == null) return ""

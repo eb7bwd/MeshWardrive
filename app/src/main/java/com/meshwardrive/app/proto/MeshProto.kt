@@ -109,7 +109,16 @@ class MeshPacket(
 
 class UserMsg(val id: String, val longName: String, val shortName: String)
 
-class PositionMsg(val lat: Double?, val lon: Double?, val alt: Int)
+class PositionMsg(
+    val lat: Double?,
+    val lon: Double?,
+    val alt: Int,
+    /** Hora de la posición en segundos Unix, 0 si no la trae. */
+    val time: Int = 0,
+    /** Precisión en milímetros (gps_accuracy), 0 si no la trae. */
+    val accuracyMm: Int = 0,
+    val hdop: Int = 0,
+)
 
 class NodeInfoMsg(
     val num: Int,
@@ -118,6 +127,7 @@ class NodeInfoMsg(
     val snr: Float,
     val lastHeard: Int,
     val hopsAway: Int?,
+    val channelUtil: Float? = null,
 )
 
 class ChannelMsg(val index: Int, val name: String, val role: Int) {
@@ -270,23 +280,51 @@ object MeshProto {
     fun decodePosition(bytes: ByteArray): PositionMsg {
         val r = ProtoReader(bytes)
         var latI: Int? = null; var lonI: Int? = null; var alt = 0
+        var time = 0; var accMm = 0; var hdop = 0
         r.forEachField { f, w ->
             when (f) {
                 1 -> latI = r.fx32(w)          // sfixed32 latitude_i
                 2 -> lonI = r.fx32(w)          // sfixed32 longitude_i
                 3 -> alt = r.vint(w).toInt()   // int32 altitude
+                4 -> time = r.fx32(w)          // fixed32 time
+                12 -> hdop = r.vint(w).toInt() // uint32 HDOP (en centésimas)
+                14 -> accMm = r.vint(w).toInt() // uint32 gps_accuracy (mm)
                 else -> r.skip(w)
             }
         }
         val lat = latI?.takeIf { it != 0 }?.let { it * 1e-7 }
         val lon = lonI?.takeIf { it != 0 }?.let { it * 1e-7 }
-        return PositionMsg(lat, lon, alt)
+        return PositionMsg(lat, lon, alt, time, accMm, hdop)
+    }
+
+    /**
+     * Ocupación del canal (%) de un paquete Telemetry: DeviceMetrics (variante 2, campo 3)
+     * o LocalStats (variante 6, campo 2). Null si el paquete no la trae.
+     */
+    fun decodeChannelUtil(bytes: ByteArray): Float? {
+        val r = ProtoReader(bytes)
+        var util: Float? = null
+        r.forEachField { f, w ->
+            when (f) {
+                2 -> r.len(w)?.let { util = floatField(it, 3) ?: util }
+                6 -> r.len(w)?.let { util = floatField(it, 2) ?: util }
+                else -> r.skip(w)
+            }
+        }
+        return util?.takeIf { !it.isNaN() && it >= 0f && it <= 100f }
+    }
+
+    private fun floatField(bytes: ByteArray, field: Int): Float? {
+        val r = ProtoReader(bytes)
+        var v: Float? = null
+        r.forEachField { f, w -> if (f == field && w == WIRE_FIXED32) v = r.float(w) else r.skip(w) }
+        return v
     }
 
     fun decodeNodeInfo(bytes: ByteArray): NodeInfoMsg {
         val r = ProtoReader(bytes)
         var num = 0; var user: UserMsg? = null; var pos: PositionMsg? = null
-        var snr = 0f; var lastHeard = 0; var hops: Int? = null
+        var snr = 0f; var lastHeard = 0; var hops: Int? = null; var chUtil: Float? = null
         r.forEachField { f, w ->
             when (f) {
                 1 -> num = r.vint(w).toInt()
@@ -294,11 +332,12 @@ object MeshProto {
                 3 -> r.len(w)?.let { pos = decodePosition(it) }
                 4 -> snr = r.float(w)
                 5 -> lastHeard = r.fx32(w)
+                6 -> r.len(w)?.let { chUtil = floatField(it, 3) }
                 9 -> hops = r.vint(w).toInt()
                 else -> r.skip(w)
             }
         }
-        return NodeInfoMsg(num, user, pos, snr, lastHeard, hops)
+        return NodeInfoMsg(num, user, pos, snr, lastHeard, hops, chUtil)
     }
 
     fun decodeChannel(bytes: ByteArray): ChannelMsg {

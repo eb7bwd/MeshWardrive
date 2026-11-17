@@ -33,6 +33,9 @@ object WardriveState {
 
     /** Motivo por el que ahora mismo no sale un ping (sin GPS, sin moverse…), o null. */
     val blocker = MutableStateFlow<String?>(null)
+
+    /** Ocupación del canal (%) que informa el nodo, o null si aún no ha llegado. */
+    val channelUtil = MutableStateFlow<Float?>(null)
     val stats = MutableStateFlow(Stats())
     val nodes = MutableStateFlow<Map<Int, NodeEntry>>(emptyMap())
 

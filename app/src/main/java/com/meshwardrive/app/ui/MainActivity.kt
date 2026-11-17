@@ -6,6 +6,8 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -15,36 +17,42 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.OpenableColumns
+import android.text.InputType
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.preference.PreferenceManager
 import androidx.viewpager.widget.PagerAdapter
 import androidx.viewpager.widget.ViewPager
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.util.TypedValue
-import android.widget.LinearLayout
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.meshwardrive.app.R
@@ -52,16 +60,23 @@ import com.meshwardrive.app.ble.MeshBle
 import com.meshwardrive.app.data.Analysis
 import com.meshwardrive.app.data.CoverageExport
 import com.meshwardrive.app.data.CoverageGrid
+import com.meshwardrive.app.data.Geo
 import com.meshwardrive.app.data.MODE_CHANNEL
 import com.meshwardrive.app.data.MODE_DIRECT
+import com.meshwardrive.app.data.MODE_LISTEN
+import com.meshwardrive.app.data.NodeEntry
 import com.meshwardrive.app.data.PingRow
 import com.meshwardrive.app.data.PingStatus
+import com.meshwardrive.app.data.RxRow
+import com.meshwardrive.app.data.SessionMeta
 import com.meshwardrive.app.data.Settings
+import com.meshwardrive.app.data.ShareFormat
 import com.meshwardrive.app.data.Stats
-import com.meshwardrive.app.data.labelRes
+import com.meshwardrive.app.data.TextSafety
 import com.meshwardrive.app.data.WardriveDb
 import com.meshwardrive.app.data.WardriveState
 import com.meshwardrive.app.data.WardriveState.Conn
+import com.meshwardrive.app.data.labelRes
 import com.meshwardrive.app.service.WardriveService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -75,8 +90,8 @@ import org.osmdroid.mapsforge.MapsForgeTileProvider
 import org.osmdroid.mapsforge.MapsForgeTileSource
 import org.osmdroid.tileprovider.MapTileProviderBasic
 import org.osmdroid.tileprovider.modules.SqlTileWriter
-import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
@@ -87,24 +102,38 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.io.File
 import java.io.OutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var settings: Settings
     private lateinit var db: WardriveDb
+    private var storageDefaultColor: android.content.res.ColorStateList? = null
     private lateinit var map: MapView
     private lateinit var renderer: CoverageRenderer
     private var myLocation: MyLocationNewOverlay? = null
     private var centeredOnce = false
     private var offlineActive = false
     private var focusMarker: Marker? = null
-    private var selectedSession: String? = null
-    private var knownSessions: List<String> = emptyList()
+
+    // Wardrives: filtro, nombres y gráfica
     private var sessionFilter: Set<String>? = null
+    private var meta: Map<String, SessionMeta> = emptyMap()
+    private var knownSessions: List<String> = emptyList()
+    /** Wardrive de la gráfica; null = el más reciente. */
+    private var chartSession: String? = null
+    private var chartAll = false
     private var shownStats = Stats()
-    private lateinit var btnSessions: Button
-    private lateinit var chart: SignalChartView
-    private lateinit var btnSession: Button
+
+    // Filtros del mapa
+    private class RelayFilter(val byte: Int, val node: NodeEntry?, val label: String)
+    private var relayFilter: RelayFilter? = null
+    private var compareSets: Pair<Set<String>, Set<String>>? = null
+
+    private var pendingImport: Uri? = null
 
     private lateinit var tvConn: TextView
     private lateinit var tvGps: TextView
@@ -118,6 +147,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvDataStats: TextView
     private lateinit var tvLog: TextView
     private lateinit var pager: ViewPager
+    private lateinit var chart: SignalChartView
+    private lateinit var btnSessions: Button
+    private lateinit var btnSession: Button
+    private lateinit var dataTabs: MaterialButtonToggleGroup
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -131,7 +164,7 @@ class MainActivity : AppCompatActivity() {
 
     private val exportPingsLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-            uri?.let { u -> export(u) { out, pings, rx, nodes, my -> Exporter.pingsCsv(out, pings, nodes, my) } }
+            uri?.let { u -> export(u) { out, pings, _, nodes, my -> Exporter.pingsCsv(out, pings, nodes, my) } }
         }
     private val exportRxLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -141,7 +174,6 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
             uri?.let { u -> export(u) { out, pings, rx, nodes, my -> Exporter.geoJson(out, pings, rx, nodes, my) } }
         }
-
     private val exportCellsLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/geo+json")) { uri ->
             val size = settings.cellSizeM
@@ -159,6 +191,10 @@ class MainActivity : AppCompatActivity() {
     private val importMapLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let { importOfflineMap(it) }
+        }
+    private val importShareLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { importShared(it) }
         }
 
     // ------------------------------------------------------------ ciclo de vida
@@ -178,6 +214,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         settings = Settings(this)
         db = WardriveDb.get(this)
+        sessionFilter = settings.sessionFilter
 
         tvConn = findViewById(R.id.tvConn)
         tvGps = findViewById(R.id.tvGps)
@@ -190,18 +227,20 @@ class MainActivity : AppCompatActivity() {
         tvMode = findViewById(R.id.tvMode)
         tvDataStats = findViewById(R.id.tvDataStats)
         tvLog = findViewById(R.id.tvLog)
+        btnSessions = findViewById(R.id.btnSessions)
+        btnSession = findViewById(R.id.btnSession)
+        dataTabs = findViewById(R.id.dataTabs)
+
         chart = findViewById(R.id.chart)
         chart.emptyText = getString(R.string.chart_empty)
+        chart.mapHint = getString(R.string.map_show)
+        chart.statusText = { getString(it.labelRes) }
         chart.onPick = { lat, lon, label -> focusOnMap(lat, lon, label) }
-        btnSession = findViewById(R.id.btnSession)
-        sessionFilter = settings.sessionFilter
-        btnSessions = findViewById(R.id.btnSessions)
-        btnSessions.setOnClickListener { showSessionsFilterDialog() }
-        updateSessionsButton()
-        btnSession.setOnClickListener { showSessionDialog() }
-        setupPages(savedInstanceState == null)
 
+        setupPages(savedInstanceState == null)
+        setupDataTabs()
         setupMap()
+        updateSessionsButton()
 
         btnConnect.setOnClickListener { onConnectClicked() }
         btnRun.setOnClickListener {
@@ -210,8 +249,17 @@ class MainActivity : AppCompatActivity() {
         }
         btnPing.setOnClickListener { WardriveService.send(this, WardriveService.ACTION_PING) }
         findViewById<FloatingActionButton>(R.id.fabCenter).setOnClickListener { centerOnMe() }
+        click(R.id.cardStatus) { toggleStatusCard() }
+        click(R.id.btnFilterClose) { clearMapFilters() }
         click(R.id.btnLayers) { showLayersDialog() }
         click(R.id.btnTarget) { showTargetDialog() }
+        click(R.id.btnSessions) { showSessionsFilterDialog() }
+        click(R.id.btnSession) { showChartSessionDialog() }
+        click(R.id.btnShare) { pickWardrivesToShare() }
+        click(R.id.btnImport) { importShareLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+        click(R.id.btnReport) { showReport() }
+        click(R.id.btnCompare) { startCompare() }
+        click(R.id.btnHowCalc) { showTextDialog(getString(R.string.how_calc_btn), getString(R.string.how_calc_text)) }
         click(R.id.btnExpImage) {
             // La imagen es lo que se ve en el mapa: se vuelve a esa pestaña antes de capturar
             pager.setCurrentItem(0, false)
@@ -239,8 +287,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             showDisclaimer()
         }
-
+        handleIncoming(intent)
         observeState()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIncoming(intent)
     }
 
     override fun onResume() {
@@ -248,6 +301,35 @@ class MainActivity : AppCompatActivity() {
         map.onResume()
         refreshMap()
         updateStatus()
+        checkStorage()
+    }
+
+    /** Aviso, una vez por nivel, cuando la recepción pasiva se acerca al límite y antes de que se borre nada. */
+    private fun checkStorage() {
+        if (!settings.disclaimerAccepted) return
+        lifecycleScope.launch {
+            val n = withContext(Dispatchers.IO) { runCatching { db.rxCount() }.getOrNull() } ?: return@launch
+            val level = WardriveDb.storageLevel(n)
+            val prev = settings.storageShown
+            if (level < prev) settings.storageShown = level
+            if (level <= prev || isFinishing) return@launch
+            settings.storageShown = level
+            val b = MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.storage_title)
+                .setMessage(getString(R.string.storage_dialog_msg, WardriveDb.storagePct(n), WardriveDb.MAX_RX_ROWS))
+                .setPositiveButton(R.string.storage_manage) { _, _ ->
+                    pager.setCurrentItem(2, true)
+                    dataTabs.check(R.id.segWardrives)
+                }
+                .setNegativeButton(R.string.later, null)
+            if (settings.recordPassive) {
+                b.setNeutralButton(R.string.storage_passive_off) { _, _ ->
+                    settings.recordPassive = false
+                    toast(getString(R.string.storage_passive_off_done))
+                }
+            }
+            b.show()
+        }
     }
 
     override fun onPause() {
@@ -255,7 +337,7 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    // ------------------------------------------------------------ pestañas deslizables
+    // ------------------------------------------------------------ pestañas
 
     private fun click(id: Int, action: () -> Unit) {
         findViewById<View>(id).setOnClickListener { action() }
@@ -285,7 +367,7 @@ class MainActivity : AppCompatActivity() {
                 if (nav.selectedItemId != ids[position]) nav.selectedItemId = ids[position]
                 updateStatus()
                 if (position == 0) refreshMap() // por si han cambiado ajustes (tamaño de celda…)
-                if (position == 2) refreshAnalysis()
+                if (position == 2) refreshDataPanel()
             }
         })
         if (firstCreate) {
@@ -295,13 +377,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** La pestaña Datos tiene tres apartados: Wardrives, Análisis y Exportar. */
+    private fun setupDataTabs() {
+        dataTabs.addOnButtonCheckedListener { _, id, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            findViewById<View>(R.id.panelWardrives).visibility = if (id == R.id.segWardrives) View.VISIBLE else View.GONE
+            findViewById<View>(R.id.panelAnalysis).visibility = if (id == R.id.segAnalysis) View.VISIBLE else View.GONE
+            findViewById<View>(R.id.panelExport).visibility = if (id == R.id.segExport) View.VISIBLE else View.GONE
+            refreshDataPanel()
+        }
+        dataTabs.check(R.id.segWardrives)
+    }
+
+    private fun refreshDataPanel() {
+        when (dataTabs.checkedButtonId) {
+            R.id.segWardrives -> refreshWardrives()
+            R.id.segAnalysis -> refreshAnalysis()
+        }
+    }
+
     private fun showLayersDialog() {
         val names = arrayOf(
             getString(R.string.layer_heat), getString(R.string.layer_cells), getString(R.string.layer_pings),
-            getString(R.string.passive_rx), getString(R.string.layer_nodes),
+            getString(R.string.passive_rx), getString(R.string.layer_nodes), getString(R.string.layer_route),
+            getString(R.string.layer_gaps),
         )
         val checked = booleanArrayOf(
             settings.showHeat, settings.showCells, settings.showPings, settings.showPassive, settings.showNodes,
+            settings.showRoute, settings.showGaps,
         )
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.layers_title)
@@ -312,6 +415,8 @@ class MainActivity : AppCompatActivity() {
                     2 -> settings.showPings = on
                     3 -> settings.showPassive = on
                     4 -> settings.showNodes = on
+                    5 -> settings.showRoute = on
+                    6 -> settings.showGaps = on
                 }
                 refreshMap()
             }
@@ -319,40 +424,386 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    // ------------------------------------------------------------ análisis: gráfica y repetidores
+    // ------------------------------------------------------------ wardrives
+
+    /** Wardrives con datos, del más reciente al más antiguo, y los nombres guardados. */
+    private class WardriveList(
+        val sessions: List<String>,
+        val meta: Map<String, SessionMeta>,
+        val pings: Map<String, Int>,
+        val rx: Map<String, Int>,
+    )
+
+    private fun loadWardriveList(): WardriveList {
+        val pings = db.allPings()
+        val rx = db.allRx(onlyWithFix = false)
+        val track = db.allTrack()
+        return WardriveList(
+            sessions = Analysis.sessions(pings, rx, track),
+            meta = db.sessionMeta(),
+            pings = pings.groupingBy { it.session }.eachCount(),
+            rx = rx.groupingBy { it.session }.eachCount(),
+        )
+    }
+
+    private val dateFmt get() = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+
+    /** Nombre del wardrive si lo tiene; si no, su fecha. Los importados indican quién los compartió. */
+    private fun sessionLabel(id: String): String {
+        val m = meta[id]
+        val base = m?.name
+            ?: runCatching { dateFmt.format(SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).parse(id)!!) }.getOrNull()
+            ?: m?.created?.takeIf { it > 0 }?.let { dateFmt.format(Date(it)) }
+            ?: id
+        return if (m?.importedFrom != null) "$base · ${m.importedFrom}" else base
+    }
+
+    private fun sessionDate(id: String): String? {
+        val m = meta[id]
+        if (m?.name == null && m?.importedFrom == null) return null
+        return runCatching { dateFmt.format(SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).parse(id)!!) }.getOrNull()
+            ?: m?.created?.takeIf { it > 0 }?.let { dateFmt.format(Date(it)) }
+    }
+
+    private fun refreshWardrives() {
+        lifecycleScope.launch {
+            val list = withContext(Dispatchers.IO) { loadWardriveList() }
+            meta = list.meta
+            updateSessionsButton()
+            val box = findViewById<LinearLayout>(R.id.wardrivesContainer)
+            box.removeAllViews()
+            val rxTotal = list.rx.values.sum()
+            findViewById<TextView>(R.id.tvStorage).apply {
+                visibility = if (rxTotal > 0) View.VISIBLE else View.GONE
+                text = getString(
+                    R.string.storage_line, rxTotal, WardriveDb.MAX_RX_ROWS, WardriveDb.storagePct(rxTotal),
+                ) + if (WardriveDb.storageLevel(rxTotal) > 0) "\n" + getString(R.string.storage_line_warn) else ""
+                if (storageDefaultColor == null) storageDefaultColor = textColors
+                if (WardriveDb.storageLevel(rxTotal) > 0) setTextColor(0xFFE65100.toInt())
+                else setTextColor(storageDefaultColor)
+            }
+            val pad = (10 * resources.displayMetrics.density).toInt()
+            val ripple = TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true) }
+            if (list.sessions.isEmpty()) {
+                box.addView(TextView(this@MainActivity).apply {
+                    setPadding(0, pad, 0, pad)
+                    setText(R.string.chart_empty)
+                })
+                return@launch
+            }
+            for (id in list.sessions) {
+                val running = WardriveState.running.value && id == WardriveState.session.value
+                val title = sessionLabel(id) + (if (running) "  ●" else "") + "  ⋮"
+                val sub = buildString {
+                    sessionDate(id)?.let { append(it).append(" · ") }
+                    append(getString(R.string.wd_counts, list.pings[id] ?: 0, list.rx[id] ?: 0))
+                }
+                val text = SpannableString("$title\n$sub")
+                text.setSpan(
+                    android.text.style.StyleSpan(Typeface.BOLD), 0, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                box.addView(TextView(this@MainActivity).apply {
+                    setPadding(pad, pad, pad, pad)
+                    setBackgroundResource(ripple.resourceId)
+                    this.text = text
+                    alpha = if (sessionVisible(id)) 1f else 0.5f
+                    setOnClickListener { showWardriveActions(id) }
+                })
+            }
+        }
+    }
+
+    private fun showWardriveActions(id: String) {
+        val items = arrayOf(
+            getString(R.string.wd_show_only), getString(R.string.wd_rename),
+            getString(R.string.wd_share), getString(R.string.delete),
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(sessionLabel(id))
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        applySessionFilter(setOf(id))
+                        pager.setCurrentItem(0, true)
+                    }
+                    1 -> renameWardrive(id)
+                    2 -> shareWardrives(listOf(id))
+                    3 -> confirmDeleteWardrive(id)
+                }
+            }
+            .show()
+    }
+
+    private fun renameWardrive(id: String) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setText(meta[id]?.name.orEmpty())
+            setSelection(text.length)
+            filters = arrayOf<android.text.InputFilter>(android.text.InputFilter.LengthFilter(64))
+        }
+        val box = FrameLayout(this).apply {
+            val p = (20 * resources.displayMetrics.density).toInt()
+            setPadding(p, p / 2, p, 0)
+            addView(input)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.rename_title)
+            .setView(box)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val name = TextSafety.clean(input.text.toString(), 64)
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) { db.renameSession(id, name) }
+                    afterWardrivesChanged()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmDeleteWardrive(id: String) {
+        if (WardriveState.running.value && id == WardriveState.session.value) {
+            toast(getString(R.string.cannot_delete_running))
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.delete_wd_title, sessionLabel(id)))
+            .setMessage(R.string.delete_wd_msg)
+            .setPositiveButton(R.string.delete) { _, _ ->
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) { db.deleteSession(id) }
+                    sessionFilter?.let { f ->
+                        val nf = f - id
+                        applySessionFilter(nf.ifEmpty { null })
+                    }
+                    if (chartSession == id) chartSession = null
+                    WardriveState.stats.value = withContext(Dispatchers.IO) { db.stats() }
+                    afterWardrivesChanged()
+                    toast(getString(R.string.data_cleared))
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun afterWardrivesChanged() {
+        WardriveState.bumpData()
+        refreshWardrives()
+        refreshAnalysis()
+        refreshMap()
+    }
+
+    // ------------------------------------------------------------ compartir e importar (.mwd)
+
+    private fun pickWardrivesToShare() {
+        lifecycleScope.launch {
+            val list = withContext(Dispatchers.IO) { loadWardriveList() }
+            meta = list.meta
+            if (list.sessions.isEmpty()) return@launch toast(getString(R.string.chart_empty))
+            val labels = list.sessions.map { sessionLabel(it) }.toTypedArray()
+            val checked = BooleanArray(list.sessions.size) { sessionVisible(list.sessions[it]) }
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.share_pick_title)
+                .setMultiChoiceItems(labels, checked) { _, which, on -> checked[which] = on }
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.next) { _, _ ->
+                    val picked = list.sessions.filterIndexed { i, _ -> checked[i] }
+                    if (picked.isNotEmpty()) shareWardrives(picked)
+                }
+                .show()
+        }
+    }
+
+    /** Pregunta por la privacidad del archivo, lo genera y abre el menú de compartir del sistema. */
+    private fun shareWardrives(ids: List<String>) {
+        val opts = arrayOf(getString(R.string.share_trim), getString(R.string.share_strip))
+        val checked = booleanArrayOf(true, false)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.share_privacy_title)
+            .setMultiChoiceItems(opts, checked) { _, which, on -> checked[which] = on }
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.wd_share) { _, _ ->
+                buildAndShare(ids, trim = checked[0], strip = checked[1])
+            }
+            .show()
+        toast(getString(R.string.share_privacy_msg))
+    }
+
+    private fun buildAndShare(ids: List<String>, trim: Boolean, strip: Boolean) {
+        val progress = showProgress()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val wanted = ids.toSet()
+                    val pings = db.allPings().filter { it.session in wanted }.groupBy { it.session }
+                    val rx = db.allRx(onlyWithFix = false).filter { it.session in wanted }.groupBy { it.session }
+                    val track = db.allTrack().filter { it.session in wanted }.groupBy { it.session }
+                    val m = db.sessionMeta()
+                    val wardrives = ids.map { id ->
+                        val p = pings[id].orEmpty()
+                        val r = rx[id].orEmpty()
+                        val t = track[id].orEmpty()
+                        val created = m[id]?.created?.takeIf { it > 0 }
+                            ?: listOfNotNull(p.minOfOrNull { it.ts }, r.minOfOrNull { it.ts }, t.minOfOrNull { it.ts }).minOrNull()
+                            ?: System.currentTimeMillis()
+                        ShareFormat.prepare(ShareFormat.Wardrive(id, m[id]?.name, created, p, r, t), trim, strip)
+                    }
+                    val sharedBy = settings.shareName ?: WardriveState.conn.value.myName ?: getString(R.string.app_name)
+                    val text = ShareFormat.encode(sharedBy, System.currentTimeMillis(), wardrives)
+                    val dir = File(cacheDir, "share").apply { mkdirs() }
+                    dir.listFiles()?.forEach { it.delete() }
+                    val file = File(dir, "meshwardrive-${stamp()}.${ShareFormat.EXTENSION}")
+                    file.writeText(text, Charsets.UTF_8)
+                    file
+                }
+            }
+            progress.dismiss()
+            val file = result.getOrElse {
+                toast(getString(R.string.error_generic, it.message ?: "?"))
+                return@launch
+            }
+            shareFile(file, ShareFormat.MIME)
+        }
+    }
+
+    private fun shareFile(file: File, mime: String) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { startActivity(Intent.createChooser(send, getString(R.string.wd_share))) }
+    }
+
+    /** Archivo abierto o recibido desde otra app. */
+    private fun handleIncoming(intent: Intent?) {
+        intent ?: return
+        val uri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            else -> null
+        }
+        uri ?: return
+        // Que no se vuelva a importar al girar la pantalla
+        setIntent(Intent(this, MainActivity::class.java))
+        if (settings.disclaimerAccepted) importShared(uri) else pendingImport = uri
+    }
+
+    /**
+     * Importa un .mwd. El archivo se trata como no fiable: se lee con límite de tamaño, se valida
+     * entero y se enseña un resumen antes de guardar nada.
+     */
+    private fun importShared(uri: Uri) {
+        val progress = showProgress()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val text = contentResolver.openInputStream(uri)?.use { ShareFormat.readText(it) }
+                        ?: throw ShareFormat.ShareException("cannot read the file")
+                    ShareFormat.decode(text, System.currentTimeMillis()) to db.rxCount()
+                }
+            }
+            progress.dismiss()
+            val (d, rxNow) = result.getOrElse {
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle(R.string.import_btn)
+                    .setMessage(getString(R.string.import_error, it.message ?: "?"))
+                    .setPositiveButton(R.string.close, null)
+                    .show()
+                return@launch
+            }
+            val times = d.wardrives.map { it.created }
+            val dayFmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            val summary = getString(
+                R.string.import_summary,
+                d.sharedBy,
+                d.wardrives.size,
+                dayFmt.format(Date(times.min())),
+                dayFmt.format(Date(times.max())),
+                d.wardrives.sumOf { it.pings.size },
+                d.wardrives.sumOf { it.rx.size },
+                d.discarded,
+            )
+            // Si la importación pasaría del límite, se avisa antes: se borrarían recepciones antiguas.
+            val rxAfter = rxNow + d.wardrives.sumOf { it.rx.size }
+            val overflow = rxAfter - WardriveDb.MAX_RX_ROWS
+            val message = if (overflow > 0) summary + "\n\n" + getString(R.string.import_over_limit, overflow)
+            else summary
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.import_title)
+                .setMessage(message)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.import_confirm) { _, _ -> saveImported(d) }
+                .show()
+        }
+    }
+
+    private fun saveImported(d: ShareFormat.Decoded) {
+        val progress = showProgress()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { d.wardrives.count { db.importWardrive(it, d.sharedBy) } }
+            }
+            progress.dismiss()
+            val n = result.getOrElse {
+                toast(getString(R.string.error_generic, it.message ?: "?"))
+                return@launch
+            }
+            toast(if (n == 0) getString(R.string.import_dup) else getString(R.string.import_done, n))
+            if (n > 0) {
+                // Lo importado se ve aunque haya un filtro activo
+                sessionFilter?.let { f -> applySessionFilter(f + d.wardrives.map { it.id }) }
+                afterWardrivesChanged()
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ análisis
 
     private fun refreshAnalysis() {
         lifecycleScope.launch {
-            val data = withContext(Dispatchers.IO) {
+            val m = withContext(Dispatchers.IO) { db.sessionMeta() }
+            val (pings, rx, nodes) = withContext(Dispatchers.IO) {
                 Triple(
                     db.allPings().filter { sessionVisible(it.session) },
                     db.allRx(onlyWithFix = false).filter { sessionVisible(it.session) },
                     db.allNodes(),
                 )
             }
-            val st = statsOf(data.first, data.second.size)
+            meta = m
+            val st = statsOf(pings, rx.size)
             val ok = st.ackRelay + st.ackDest
             val pct = if (ok + st.failed > 0) 100 * ok / (ok + st.failed) else 0
             tvDataStats.text =
                 getString(R.string.data_stats, st.sent, ok, pct, st.ackRelay, st.ackDest, st.failed, st.rx)
 
-            // La gráfica es de un solo wardrive: el más reciente de los mostrados, o el que se elija
-            val sessions = Analysis.sessions(data.first, data.second)
+            val sessions = Analysis.sessions(pings, rx)
             knownSessions = sessions
-            val session = selectedSession?.takeIf { it in sessions } ?: sessions.firstOrNull()
-            btnSession.text = getString(R.string.pick_session, session?.let { sessionLabel(it) } ?: "—")
-            chart.series = session?.let { Analysis.series(it, data.first, data.second) }
-            showRelays(Analysis.relays(data.first, data.second, data.third, WardriveState.conn.value.myNodeNum))
+            if (chartAll && sessions.size > 1) {
+                btnSession.text = getString(R.string.pick_session, getString(R.string.chart_all))
+                chart.series = Analysis.series(sessions, pings, rx)
+            } else {
+                val session = chartSession?.takeIf { it in sessions } ?: sessions.firstOrNull()
+                btnSession.text = getString(R.string.pick_session, session?.let { sessionLabel(it) } ?: "—")
+                chart.series = session?.let { Analysis.series(it, pings, rx) }
+            }
+            showRelays(Analysis.relays(pings, rx, nodes, WardriveState.conn.value.myNodeNum))
         }
     }
 
-    private fun showSessionDialog() {
+    private fun showChartSessionDialog() {
         val sessions = knownSessions
         if (sessions.isEmpty()) return toast(getString(R.string.chart_empty))
+        val labels = listOf(getString(R.string.chart_all)) + sessions.map { sessionLabel(it) }
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.chart_title)
-            .setItems(sessions.map { sessionLabel(it) }.toTypedArray()) { _, which ->
-                selectedSession = sessions[which]
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which == 0) {
+                    chartAll = true
+                } else {
+                    chartAll = false
+                    chartSession = sessions[which - 1]
+                }
                 refreshAnalysis()
             }
             .show()
@@ -393,22 +844,176 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
-            val title = "$name ($hex)"
-            // Si solo hay un candidato y sabemos dónde está, se enseña el nodo; si no, donde mejor se oyó
-            val only = r.candidates.singleOrNull()
-            val known = only?.lat != null && only.lon != null
-            val lat = if (known) only?.lat else r.bestLat
-            val lon = if (known) only?.lon else r.bestLon
+            val title = "$name ($hex)  ⋮"
             box.addView(TextView(this).apply {
                 setPadding(pad, pad, pad, pad)
                 setBackgroundResource(ripple.resourceId)
                 text = "$title\n$detail"
-                if (lat != null && lon != null) setOnClickListener { focusOnMap(lat, lon, title) }
+                setOnClickListener { showRelayActions(r, "$name ($hex)") }
             })
         }
     }
 
-    /** Lleva a la pestaña Mapa y marca el punto elegido en la gráfica o en la lista de repetidores. */
+    private fun showRelayActions(r: Analysis.RelayStat, title: String) {
+        val only = r.candidates.singleOrNull()
+        val known = only?.lat != null && only.lon != null
+        val lat = if (known) only?.lat else r.bestLat
+        val lon = if (known) only?.lon else r.bestLon
+        val items = arrayOf(getString(R.string.map_show), getString(R.string.relay_coverage))
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> if (lat != null && lon != null) focusOnMap(lat, lon, title) else toast(getString(R.string.relay_range_unknown))
+                    1 -> {
+                        compareSets = null
+                        relayFilter = RelayFilter(r.relayByte, only, title)
+                        pager.setCurrentItem(0, true)
+                        refreshMap()
+                    }
+                }
+            }
+            .show()
+    }
+
+    // ------------------------------------------------------------ informe y comparación
+
+    private fun showReport() {
+        lifecycleScope.launch {
+            val rep = withContext(Dispatchers.IO) {
+                Analysis.report(
+                    db.allPings().filter { sessionVisible(it.session) },
+                    db.allRx(onlyWithFix = false).filter { sessionVisible(it.session) },
+                    db.allTrack().filter { sessionVisible(it.session) },
+                    settings.cellSizeM,
+                )
+            }
+            if (rep.wardrives == 0) return@launch toast(getString(R.string.chart_empty))
+            val mins = (rep.durationMs / 60_000L).toInt()
+            val text = getString(
+                R.string.report_text,
+                rep.wardrives,
+                String.format(Locale.getDefault(), "%.1f", rep.distanceM / 1000.0),
+                "%d:%02d h".format(mins / 60, mins % 60),
+                rep.pings,
+                rep.successPct,
+                rep.rxPackets,
+                rep.cells,
+                rep.coveredCells,
+                rep.coveredPct,
+                rep.bestSnr?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+            )
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            var dialog: AlertDialog? = null
+            val content = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(pad, pad / 2, pad, 0)
+                addView(TextView(this@MainActivity).apply {
+                    this.text = text
+                    setLineSpacing(4f, 1f)
+                    setTextIsSelectable(true)
+                })
+                val row = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+                rep.best?.let { c ->
+                    row.addView(Button(this@MainActivity, null, android.R.attr.borderlessButtonStyle).apply {
+                        setText(R.string.report_best)
+                        setOnClickListener { dialog?.dismiss(); focusOnMap(c.latC, c.lonC, getString(R.string.report_best)) }
+                    })
+                }
+                rep.worst?.let { c ->
+                    row.addView(Button(this@MainActivity, null, android.R.attr.borderlessButtonStyle).apply {
+                        setText(R.string.report_worst)
+                        setOnClickListener { dialog?.dismiss(); focusOnMap(c.latC, c.lonC, getString(R.string.report_worst)) }
+                    })
+                }
+                addView(row)
+            }
+            dialog = MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.report_btn)
+                .setView(ScrollView(this@MainActivity).apply { addView(content) })
+                .setPositiveButton(R.string.report_share) { _, _ -> shareReportImage(text) }
+                .setNegativeButton(R.string.close, null)
+                .show()
+        }
+    }
+
+    /** Imagen del informe: el mapa tal y como se ve, con el texto del informe debajo. */
+    private fun shareReportImage(text: String) {
+        pager.setCurrentItem(0, false)
+        map.post {
+            val mapBmp = captureMapImage() ?: return@post toast(getString(R.string.map_not_ready))
+            val d = resources.displayMetrics.density
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 14f * d }
+            val bold = Paint(paint).apply { typeface = Typeface.DEFAULT_BOLD; textSize = 16f * d }
+            val lines = text.split("\n")
+            val lineH = 20f * d
+            val pad = 16f * d
+            val panelH = (pad * 2 + lineH * (lines.size + 1)).toInt()
+            val out = Bitmap.createBitmap(mapBmp.width, mapBmp.height + panelH, Bitmap.Config.ARGB_8888)
+            val c = Canvas(out)
+            c.drawColor(Color.WHITE)
+            c.drawBitmap(mapBmp, 0f, 0f, null)
+            var y = mapBmp.height + pad + 14f * d
+            c.drawText(getString(R.string.app_name) + " · " + getString(R.string.report_btn), pad, y, bold)
+            for (l in lines) {
+                y += lineH
+                c.drawText(l, pad, y, paint)
+            }
+            mapBmp.recycle()
+            lifecycleScope.launch {
+                val file = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = File(cacheDir, "share").apply { mkdirs() }
+                        dir.listFiles()?.forEach { it.delete() }
+                        File(dir, "meshwardrive-report-${stamp()}.png").also { f ->
+                            f.outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        }
+                    }
+                }
+                out.recycle()
+                file.onSuccess { shareFile(it, "image/png") }
+                    .onFailure { toast(getString(R.string.error_generic, it.message ?: "?")) }
+            }
+        }
+    }
+
+    /** Elige dos grupos de wardrives (antes y después) y muestra sus diferencias en el mapa. */
+    private fun startCompare() {
+        lifecycleScope.launch {
+            val list = withContext(Dispatchers.IO) { loadWardriveList() }
+            meta = list.meta
+            if (list.sessions.size < 2) return@launch toast(getString(R.string.compare_need_two))
+            val labels = list.sessions.map { sessionLabel(it) }.toTypedArray()
+            fun pick(titleRes: Int, onPicked: (Set<String>) -> Unit) {
+                val checked = BooleanArray(list.sessions.size)
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle(titleRes)
+                    .setMultiChoiceItems(labels, checked) { _, which, on -> checked[which] = on }
+                    .setNegativeButton(R.string.cancel, null)
+                    .setPositiveButton(R.string.next) { _, _ ->
+                        val picked = list.sessions.filterIndexed { i, _ -> checked[i] }.toSet()
+                        if (picked.isEmpty()) toast(getString(R.string.compare_need_two)) else onPicked(picked)
+                    }
+                    .show()
+            }
+            pick(R.string.compare_pick_a) { a ->
+                pick(R.string.compare_pick_b) { b ->
+                    relayFilter = null
+                    compareSets = a to b
+                    pager.setCurrentItem(0, true)
+                    refreshMap()
+                }
+            }
+        }
+    }
+
+    private fun clearMapFilters() {
+        relayFilter = null
+        compareSets = null
+        refreshMap()
+    }
+
+    /** Lleva a la pestaña Mapa y marca el punto elegido en la gráfica, el informe o la lista de repetidores. */
     private fun focusOnMap(lat: Double, lon: Double, title: String) {
         pager.setCurrentItem(0, true)
         myLocation?.disableFollowLocation()
@@ -417,6 +1022,7 @@ class MainActivity : AppCompatActivity() {
         map.overlays.remove(marker)
         marker.position = point
         marker.title = title
+        marker.snippet = null
         ContextCompat.getDrawable(this, R.drawable.ic_focus)?.let { marker.icon = it }
         marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
         map.overlays.add(marker)
@@ -426,7 +1032,7 @@ class MainActivity : AppCompatActivity() {
         map.invalidate()
     }
 
-    // ------------------------------------------------------------ aviso legal y créditos
+    // ------------------------------------------------------------ aviso legal, tutorial y ayuda
 
     private fun askPermissions() {
         if (!hasCorePermissions()) permLauncher.launch(requiredPermissions()) else enableMyLocation()
@@ -442,6 +1048,7 @@ class MainActivity : AppCompatActivity() {
                 settings.disclaimerAccepted = true
                 askPermissions()
                 if (!settings.tutorialSeen) startTutorial()
+                pendingImport?.let { pendingImport = null; importShared(it) }
             }
             .setNegativeButton(R.string.exit) { _, _ -> finish() }
             .show()
@@ -467,6 +1074,7 @@ class MainActivity : AppCompatActivity() {
         }
         val (page, title, body) = steps[step]
         if (page >= 0) pager.setCurrentItem(page, true)
+        if (page == 2) dataTabs.check(R.id.segWardrives)
         val last = step == steps.size - 1
         val builder = MaterialAlertDialogBuilder(this)
             .setTitle(getString(title) + "  (${step + 1}/${steps.size})")
@@ -479,20 +1087,35 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setDimAmount(0.25f)
     }
 
-    private fun showAbout() {
-        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+    private fun showTextDialog(title: String, text: String) {
         val tv = TextView(this).apply {
             setPadding(48, 24, 48, 24)
             setTextIsSelectable(true)
-            text = getString(R.string.about_credits) + "\n\n— " + getString(R.string.disclaimer_title) +
-                " —\n\n" + getString(R.string.disclaimer_text)
+            setLineSpacing(4f, 1f)
+            this.text = text
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle(getString(R.string.app_name) + " " + version + " · " + getString(R.string.author))
-            .setView(android.widget.ScrollView(this).apply { addView(tv) })
+            .setTitle(title)
+            .setView(ScrollView(this).apply { addView(tv) })
             .setPositiveButton(R.string.close, null)
             .show()
     }
+
+    private fun showAbout() {
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        showTextDialog(
+            getString(R.string.app_name) + " " + version + " · " + getString(R.string.author),
+            getString(R.string.about_credits) +
+                "\n\n— " + getString(R.string.privacy_title) + " —\n\n" + getString(R.string.privacy_text) +
+                "\n\n— " + getString(R.string.disclaimer_title) + " —\n\n" + getString(R.string.disclaimer_text),
+        )
+    }
+
+    private fun showProgress(): AlertDialog =
+        MaterialAlertDialogBuilder(this)
+            .setMessage(R.string.working)
+            .setCancelable(false)
+            .show()
 
     // ------------------------------------------------------------ mapa
 
@@ -512,8 +1135,62 @@ class MainActivity : AppCompatActivity() {
 
             override fun longPressHelper(p: GeoPoint?): Boolean = false
         }))
-        renderer = CoverageRenderer(map)
+        renderer = CoverageRenderer(map) { p -> showTextDialog(renderer.pingTitle(p), renderer.describePing(p)) }
         applyMapSource()
+    }
+
+    private fun toggleStatusCard() {
+        val details = findViewById<View>(R.id.statusDetails)
+        val show = details.visibility != View.VISIBLE
+        details.visibility = if (show) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.tvCollapse).text = if (show) "▴" else "▾"
+    }
+
+    /** Leyenda sobre el mapa: colores de cobertura o, si se está comparando, los de la comparación. */
+    private fun updateLegend() {
+        val box = findViewById<LinearLayout>(R.id.legend)
+        box.removeAllViews()
+        val items = if (compareSets != null) listOf(
+            CoverageRenderer.BETTER to "▲ " + getString(R.string.cmp_better),
+            CoverageRenderer.WORSE to "▼ " + getString(R.string.cmp_worse),
+            CoverageRenderer.SAME to getString(R.string.cmp_same),
+            CoverageRenderer.NEW to getString(R.string.cmp_new),
+        ) else listOf(
+            CoverageGrid.GOOD to "≥ −7",
+            CoverageGrid.MARGINAL to "−7…−13",
+            CoverageGrid.WEAK to "< −13 dB",
+            CoverageGrid.FAIL to "✗",
+        )
+        val gap = (8 * resources.displayMetrics.density).toInt()
+        for ((color, label) in items) {
+            val s = SpannableString("● $label")
+            s.setSpan(ForegroundColorSpan(color), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            box.addView(TextView(this).apply {
+                text = s
+                textSize = 11f
+                setPadding(0, 0, gap, 0)
+            })
+        }
+    }
+
+    private fun updateFilterBanner(rangeM: Double?) {
+        val card = findViewById<View>(R.id.cardFilter)
+        val tv = findViewById<TextView>(R.id.tvFilter)
+        val relay = relayFilter
+        val cmp = compareSets
+        when {
+            cmp != null -> {
+                card.visibility = View.VISIBLE
+                tv.text = getString(R.string.compare_banner, cmp.first.size, cmp.second.size)
+            }
+            relay != null -> {
+                card.visibility = View.VISIBLE
+                val range = rangeM?.let { String.format(Locale.getDefault(), "%.1f km", it / 1000.0) }
+                    ?: getString(R.string.relay_range_unknown)
+                tv.text = getString(R.string.relay_filter_banner, relay.label, range)
+            }
+            else -> card.visibility = View.GONE
+        }
     }
 
     // ------------------------------------------------------------ mapas offline (Mapsforge)
@@ -604,7 +1281,7 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.off_pick_map))
             return
         }
-        val safe = name.dropLast(4).replace(Regex("[^A-Za-z0-9._-]"), "_") + ".map"
+        val safe = name.dropLast(4).replace(Regex("[^A-Za-z0-9._-]"), "_").take(80) + ".map"
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.off_importing)
             .setMessage(getString(R.string.off_copying, name))
@@ -651,15 +1328,22 @@ class MainActivity : AppCompatActivity() {
         val s = shownStats
         val ok = s.ackRelay + s.ackDest
         val pct = if (ok + s.failed > 0) 100 * ok / (ok + s.failed) else 0
-        val title = "MeshWardrive · " +
-            java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val title = "MeshWardrive · " + dateFmt.format(Date())
         val sub = getString(R.string.image_sub, s.sent, ok, pct, s.failed, settings.cellSizeM)
         val rows = buildList {
-            add(CoverageGrid.GOOD to getString(R.string.legend_good))
-            add(CoverageGrid.MARGINAL to getString(R.string.legend_marginal))
-            add(CoverageGrid.WEAK to getString(R.string.legend_weak))
-            add(CoverageGrid.FAIL to getString(R.string.no_response))
-            if (settings.showPassive) add(CoverageGrid.PASSIVE to getString(R.string.passive_rx))
+            if (compareSets != null) {
+                add(CoverageRenderer.BETTER to getString(R.string.cmp_better))
+                add(CoverageRenderer.WORSE to getString(R.string.cmp_worse))
+                add(CoverageRenderer.SAME to getString(R.string.cmp_same))
+                add(CoverageRenderer.NEW to getString(R.string.cmp_new))
+            } else {
+                add(CoverageGrid.GOOD to getString(R.string.legend_good))
+                add(CoverageGrid.MARGINAL to getString(R.string.legend_marginal))
+                add(CoverageGrid.WEAK to getString(R.string.legend_weak))
+                add(CoverageGrid.FAIL to getString(R.string.no_response))
+                if (settings.showPassive) add(CoverageGrid.PASSIVE to getString(R.string.passive_rx))
+                if (settings.showRoute) add(CoverageRenderer.ROUTE to getString(R.string.layer_route))
+            }
         }
 
         val pad = 8f * d
@@ -692,17 +1376,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exportImage(uri: Uri) {
-        val bmp = captureMapImage() ?: return toast(getString(R.string.map_not_ready))
-        lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    contentResolver.openOutputStream(uri)?.use { out ->
-                        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
-                    } ?: error("cannot open the file")
+        map.post {
+            val bmp = captureMapImage() ?: return@post toast(getString(R.string.map_not_ready))
+            lifecycleScope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching {
+                        contentResolver.openOutputStream(uri)?.use { out ->
+                            bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        } ?: error("cannot open the file")
+                    }
                 }
+                bmp.recycle()
+                toast(
+                    if (ok.isSuccess) getString(R.string.image_saved)
+                    else getString(R.string.error_generic, ok.exceptionOrNull()?.message ?: "?")
+                )
             }
-            bmp.recycle()
-            toast(if (ok.isSuccess) getString(R.string.image_saved) else getString(R.string.error_generic, ok.exceptionOrNull()?.message ?: "?"))
         }
     }
 
@@ -739,29 +1428,72 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Repinta el mapa. Los datos y los cálculos pesados (celdas, huecos, comparación) se hacen
+     * fuera del hilo principal; aquí solo se crean las capas.
+     */
     private fun refreshMap() {
+        val cell = settings.cellSizeM
+        val layers = CoverageRenderer.Layers(
+            heat = settings.showHeat,
+            cells = settings.showCells,
+            pings = settings.showPings,
+            passive = settings.showPassive,
+            nodes = settings.showNodes,
+            route = settings.showRoute,
+            gaps = settings.showGaps,
+        )
+        val relay = relayFilter
+        val cmp = compareSets
+        val center = map.mapCenter
+        val cLat = center.latitude
+        val cLon = center.longitude
         lifecycleScope.launch {
-            val data = withContext(Dispatchers.IO) {
-                Triple(
-                    db.allPings().filter { sessionVisible(it.session) },
-                    db.allRx(onlyWithFix = true).filter { sessionVisible(it.session) },
-                    db.allNodes(),
+            val out = withContext(Dispatchers.IO) {
+                val allPings = db.allPings()
+                val nodes = db.allNodes()
+                var pings = allPings.filter { sessionVisible(it.session) }
+                var rx = db.allRx(onlyWithFix = true).filter { sessionVisible(it.session) }
+                var track = if (layers.route) db.allTrack().filter { sessionVisible(it.session) } else emptyList()
+                var diff: List<CoverageGrid.DiffCell>? = null
+                var rangeM: Double? = null
+                if (cmp != null) {
+                    diff = CoverageGrid.diffCells(
+                        allPings.filter { it.session in cmp.first }, allPings.filter { it.session in cmp.second }, cell,
+                    )
+                    track = emptyList()
+                } else if (relay != null) {
+                    val b = relay.byte
+                    pings = pings.filter { (it.relayNode?.and(0xFF)) == b || (it.ackRelayNode?.and(0xFF)) == b }
+                    rx = rx.filter {
+                        val hops = it.hops
+                        (hops != null && hops > 0 && it.relayNode?.and(0xFF) == b) || (hops == 0 && (it.from and 0xFF) == b)
+                    }
+                    val nLat = relay.node?.lat
+                    val nLon = relay.node?.lon
+                    if (nLat != null && nLon != null) {
+                        val d = pings.map { Geo.distanceM(nLat, nLon, it.lat, it.lon) } +
+                            rx.mapNotNull { r -> if (r.lat != null && r.lon != null) Geo.distanceM(nLat, nLon, r.lat, r.lon) else null }
+                        rangeM = d.maxOrNull()
+                    }
+                }
+                val data = CoverageRenderer.MapData(
+                    cellSizeM = cell,
+                    pings = pings,
+                    nodes = nodes,
+                    track = track,
+                    pingCells = if (layers.cells) CoverageGrid.pingCells(pings, cell) else emptyList(),
+                    rxCells = if (layers.passive) CoverageGrid.rxCells(rx, cell) else emptyList(),
+                    gaps = if (layers.gaps && diff == null) CoverageGrid.gapCells(pings, cell, cLat, cLon) else emptyList(),
+                    diff = diff,
+                    highlight = relay?.node,
                 )
+                Triple(data, statsOf(pings, rx.size), rangeM)
             }
-            shownStats = statsOf(data.first, data.second.size)
-            renderer.render(
-                pings = data.first,
-                rx = data.second,
-                nodes = data.third,
-                cellSizeM = settings.cellSizeM,
-                layers = CoverageRenderer.Layers(
-                    heat = settings.showHeat,
-                    cells = settings.showCells,
-                    pings = settings.showPings,
-                    passive = settings.showPassive,
-                    nodes = settings.showNodes,
-                ),
-            )
+            shownStats = out.second
+            renderer.render(out.first, layers)
+            updateFilterBanner(out.third)
+            updateLegend()
         }
     }
 
@@ -783,24 +1515,14 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /** 20261116-221000 → 16/11/2026 22:10 */
-    private fun sessionLabel(id: String): String = runCatching {
-        val d = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).parse(id)!!
-        SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(d)
-    }.getOrDefault(id)
-
     private fun showSessionsFilterDialog() {
         lifecycleScope.launch {
-            val data = withContext(Dispatchers.IO) { db.allPings() to db.allRx(onlyWithFix = false) }
-            val sessions = Analysis.sessions(data.first, data.second)
-            if (sessions.isEmpty()) {
-                toast(getString(R.string.chart_empty))
-                return@launch
-            }
-            val pingCount = data.first.groupingBy { it.session }.eachCount()
-            val rxCount = data.second.groupingBy { it.session }.eachCount()
+            val list = withContext(Dispatchers.IO) { loadWardriveList() }
+            meta = list.meta
+            val sessions = list.sessions
+            if (sessions.isEmpty()) return@launch toast(getString(R.string.chart_empty))
             val labels = sessions.map {
-                "${sessionLabel(it)}\n${pingCount[it] ?: 0} pings · ${rxCount[it] ?: 0} rx"
+                sessionLabel(it) + "\n" + getString(R.string.wd_counts, list.pings[it] ?: 0, list.rx[it] ?: 0)
             }.toTypedArray()
             val current = sessionFilter
             val checked = BooleanArray(sessions.size) { current == null || sessions[it] in current }
@@ -821,10 +1543,10 @@ class MainActivity : AppCompatActivity() {
     private fun applySessionFilter(filter: Set<String>?) {
         sessionFilter = filter
         settings.sessionFilter = filter
-        selectedSession = null
+        chartSession = null
         updateSessionsButton()
         refreshMap()
-        refreshAnalysis()
+        refreshDataPanel()
     }
 
     private fun updateSessionsButton() {
@@ -848,10 +1570,11 @@ class MainActivity : AppCompatActivity() {
                 launch { WardriveState.stats.collect { updateStatus() } }
                 launch { WardriveState.lastPing.collect { updateStatus() } }
                 launch { WardriveState.blocker.collect { updateStatus() } }
+                launch { WardriveState.channelUtil.collect { updateStatus() } }
                 launch {
                     WardriveState.dataVersion.debounce(1_500).collect {
                         refreshMap()
-                        if (pager.currentItem == 2) refreshAnalysis()
+                        if (pager.currentItem == 2) refreshDataPanel()
                     }
                 }
                 launch { WardriveState.log.collect { lines -> tvLog.text = lines.asReversed().joinToString("\n") } }
@@ -868,6 +1591,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus() {
         val c = WardriveState.conn.value
         val running = WardriveState.running.value
+        val mode = settings.mode
         tvConn.text = when (c.conn) {
             Conn.DISCONNECTED -> "○ " + getString(R.string.st_no_node) + (c.message?.let { " · $it" } ?: "")
             Conn.CONNECTING -> "◌ " +
@@ -875,23 +1599,26 @@ class MainActivity : AppCompatActivity() {
             Conn.CONFIGURING -> "◌ " + getString(R.string.st_configuring)
             Conn.READY -> {
                 val node = c.myName ?: "!%08x".format(c.myNodeNum)
-                val mode = if (settings.mode == MODE_DIRECT) {
-                    val t = settings.targetNode
-                    getString(
-                        R.string.st_direct_to,
-                        if (t != 0) WardriveState.nodeLabel(t) else getString(R.string.st_pick_target),
-                    )
-                } else {
-                    c.channelIndex?.let { getString(R.string.st_channel, c.channelName ?: "", it) }
+                val modeText = when (mode) {
+                    MODE_LISTEN -> getString(R.string.st_listen)
+                    MODE_DIRECT -> {
+                        val t = settings.targetNode
+                        getString(
+                            R.string.st_direct_to,
+                            if (t != 0) WardriveState.nodeLabel(t) else getString(R.string.st_pick_target),
+                        )
+                    }
+                    else -> c.channelIndex?.let { getString(R.string.st_channel, c.channelName ?: "", it) }
                         ?: getString(R.string.st_missing_channel, settings.channelName)
                 }
-                "● $node · $mode"
+                "● $node · $modeText"
             }
         }
         val s = WardriveState.stats.value
         val ok = s.ackRelay + s.ackDest
         val pct = if (ok + s.failed > 0) 100 * ok / (ok + s.failed) else 0
-        tvStats.text = getString(R.string.stats_line, s.sent, ok, pct, s.failed, s.rx)
+        tvStats.text = getString(R.string.stats_line, s.sent, ok, pct, s.failed, s.rx) +
+            (WardriveState.channelUtil.value?.let { " · " + getString(R.string.chutil_short, it.roundToInt()) } ?: "")
         tvLast.text = WardriveState.lastPing.value?.let { p ->
             buildString {
                 append(
@@ -932,22 +1659,27 @@ class MainActivity : AppCompatActivity() {
                     else getString(R.string.cd_channel_missing, settings.channelName)
                 )
                 append("\n").append(getString(R.string.cd_nodes, WardriveState.nodes.value.size))
+                WardriveState.channelUtil.value?.let {
+                    append("\n").append(getString(R.string.chutil_short, it.roundToInt()))
+                }
             }
         }
-        tvMode.text = if (settings.mode == MODE_DIRECT) {
-            val t = settings.targetNode
-            getString(
-                R.string.mode_direct_desc,
-                if (t != 0) WardriveState.nodeLabel(t) else getString(R.string.mode_direct_pick),
-            )
-        } else {
-            getString(R.string.mode_channel_desc, settings.channelName)
+        tvMode.text = when (mode) {
+            MODE_LISTEN -> getString(R.string.mode_listen_desc)
+            MODE_DIRECT -> {
+                val t = settings.targetNode
+                getString(
+                    R.string.mode_direct_desc,
+                    if (t != 0) WardriveState.nodeLabel(t) else getString(R.string.mode_direct_pick),
+                )
+            }
+            else -> getString(R.string.mode_channel_desc, settings.channelName)
         }
 
         btnConnect.setText(if (c.conn == Conn.DISCONNECTED) R.string.connect else R.string.disconnect)
         btnRun.setText(if (running) R.string.stop else R.string.start)
         btnRun.isEnabled = c.conn == Conn.READY || running
-        btnPing.isEnabled = c.conn == Conn.READY
+        btnPing.isEnabled = c.conn == Conn.READY && mode != MODE_LISTEN
     }
 
     private fun updateGps() {
@@ -1009,7 +1741,7 @@ class MainActivity : AppCompatActivity() {
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, r: ScanResult) {
                 val uuids = r.scanRecord?.serviceUuids
-                val name = r.device.name ?: r.scanRecord?.deviceName
+                val name = TextSafety.clean(r.device.name ?: r.scanRecord?.deviceName, 40)
                 val isMesh = uuids?.any { it.uuid == MeshBle.SERVICE_UUID } == true ||
                     name?.contains("meshtastic", ignoreCase = true) == true
                 if (!isMesh) return
@@ -1056,27 +1788,33 @@ class MainActivity : AppCompatActivity() {
         toast(getString(R.string.scanning_toast))
     }
 
-    // ------------------------------------------------------------ menú
-
+    /** Modo de ping: canal, solo escucha o directo a un nodo. */
     private fun showTargetDialog() {
         val my = WardriveState.conn.value.myNodeNum
         val nodes = WardriveState.nodes.value.values
             .filter { it.num != my }
             .sortedByDescending { it.lastHeard }
-        val labels = mutableListOf(getString(R.string.target_none))
+        val labels = mutableListOf(getString(R.string.target_none), getString(R.string.mode_listen_entry))
         labels += nodes.map { it.label + "  (!" + "%08x".format(it.num) + ")" }
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.target_title)
             .setItems(labels.toTypedArray()) { _, which ->
-                if (which == 0) {
-                    settings.targetNode = 0
-                    settings.setMode(MODE_CHANNEL)
-                    toast(getString(R.string.mode_channel_toast))
-                } else {
-                    val n = nodes[which - 1]
-                    settings.targetNode = n.num
-                    settings.setMode(MODE_DIRECT)
-                    toast(getString(R.string.mode_direct_toast, n.label))
+                when (which) {
+                    0 -> {
+                        settings.targetNode = 0
+                        settings.setMode(MODE_CHANNEL)
+                        toast(getString(R.string.mode_channel_toast))
+                    }
+                    1 -> {
+                        settings.setMode(MODE_LISTEN)
+                        toast(getString(R.string.mode_listen_entry))
+                    }
+                    else -> {
+                        val n = nodes[which - 2]
+                        settings.targetNode = n.num
+                        settings.setMode(MODE_DIRECT)
+                        toast(getString(R.string.mode_direct_toast, n.label))
+                    }
                 }
                 updateStatus()
             }
@@ -1092,7 +1830,8 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.IO) { db.clearMeasurements() }
                     WardriveState.stats.value = withContext(Dispatchers.IO) { db.stats() }
                     WardriveState.lastPing.value = null
-                    WardriveState.bumpData()
+                    applySessionFilter(null)
+                    afterWardrivesChanged()
                     toast(getString(R.string.data_cleared))
                 }
             }
@@ -1101,10 +1840,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun export(
-        uri: android.net.Uri,
-        block: (OutputStream, List<com.meshwardrive.app.data.PingRow>, List<com.meshwardrive.app.data.RxRow>,
-                Map<Int, com.meshwardrive.app.data.NodeEntry>, Int) -> Unit,
+        uri: Uri,
+        block: (OutputStream, List<PingRow>, List<RxRow>, Map<Int, NodeEntry>, Int) -> Unit,
     ) {
+        val progress = showProgress()
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
@@ -1116,7 +1855,11 @@ class MainActivity : AppCompatActivity() {
                     } ?: error("cannot open the file")
                 }
             }
-            toast(if (ok.isSuccess) getString(R.string.exported) else getString(R.string.error_generic, ok.exceptionOrNull()?.message ?: "?"))
+            progress.dismiss()
+            toast(
+                if (ok.isSuccess) getString(R.string.exported)
+                else getString(R.string.error_generic, ok.exceptionOrNull()?.message ?: "?")
+            )
         }
     }
 
@@ -1136,7 +1879,7 @@ class MainActivity : AppCompatActivity() {
         .filter { it != Manifest.permission.POST_NOTIFICATIONS && it != Manifest.permission.ACCESS_COARSE_LOCATION }
         .all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
 
-    private fun stamp() = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())
+    private fun stamp() = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 }

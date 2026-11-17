@@ -7,10 +7,25 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 class WardriveDb private constructor(ctx: Context) :
-    SQLiteOpenHelper(ctx, "wardrive.db", null, 1) {
+    SQLiteOpenHelper(ctx, "wardrive.db", null, 2) {
 
     companion object {
         @Volatile private var instance: WardriveDb? = null
+
+        /** Máximo de paquetes de recepción pasiva guardados: los más antiguos se borran. */
+        const val MAX_RX_ROWS = 300_000
+
+        /**
+         * Nivel de llenado de la recepción pasiva: 0 normal, 1 a partir del 80 %, 2 a partir del 95 %.
+         * Se avisa al subir de nivel, antes de que se empiecen a borrar los paquetes más antiguos.
+         */
+        fun storageLevel(count: Int): Int = when {
+            count >= MAX_RX_ROWS / 100 * 95 -> 2
+            count >= MAX_RX_ROWS / 100 * 80 -> 1
+            else -> 0
+        }
+
+        fun storagePct(count: Int): Int = (count.toLong() * 100 / MAX_RX_ROWS).toInt().coerceIn(0, 100)
         fun get(ctx: Context): WardriveDb =
             instance ?: synchronized(this) {
                 instance ?: WardriveDb(ctx.applicationContext).also { instance = it }
@@ -46,10 +61,28 @@ class WardriveDb private constructor(ctx: Context) :
         )
         db.execSQL("CREATE INDEX idx_pings_ts ON pings(ts)")
         db.execSQL("CREATE INDEX idx_rx_ts ON rx(ts)")
+        createV2(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Versión 1: nada que migrar todavía.
+        if (oldVersion < 2) createV2(db)
+    }
+
+    /** Versión 2: nombre de cada wardrive, quién lo compartió y la ruta recorrida. */
+    private fun createV2(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY, name TEXT, imported_from TEXT, created INTEGER
+            )""".trimIndent()
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS track (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT, ts INTEGER, lat REAL, lon REAL, acc REAL
+            )""".trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_track_session ON track(session)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_pings_session ON pings(session)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_rx_session ON rx(session)")
     }
 
     // ---------------- Pings ----------------
@@ -129,7 +162,25 @@ class WardriveDb private constructor(ctx: Context) :
 
     // ---------------- Recepción pasiva ----------------
 
-    fun insertRx(r: RxRow): Long = writableDatabase.insert("rx", null, ContentValues().apply {
+    private var rxInserts = 0
+
+    fun insertRx(r: RxRow): Long {
+        val id = writableDatabase.insert("rx", null, rxValues(r))
+        // Cada cierto número de inserciones se recorta la tabla para que no crezca sin límite
+        if (++rxInserts % 500 == 0) trimRx()
+        return id
+    }
+
+    /** Paquetes de recepción pasiva guardados ahora mismo. */
+    fun rxCount(): Int = android.database.DatabaseUtils.queryNumEntries(readableDatabase, "rx").toInt()
+
+    private fun trimRx() {
+        writableDatabase.execSQL(
+            "DELETE FROM rx WHERE id <= (SELECT id FROM rx ORDER BY id DESC LIMIT 1 OFFSET $MAX_RX_ROWS)"
+        )
+    }
+
+    private fun rxValues(r: RxRow) = ContentValues().apply {
         put("session", r.session)
         put("ts", r.ts)
         put("lat", r.lat)
@@ -145,7 +196,7 @@ class WardriveDb private constructor(ctx: Context) :
         put("hop_limit", r.hopLimit)
         put("relay_node", r.relayNode)
         put("packet_id", r.packetId)
-    })
+    }
 
     fun allRx(onlyWithFix: Boolean): List<RxRow> {
         val where = if (onlyWithFix) "WHERE lat IS NOT NULL AND lon IS NOT NULL" else ""
@@ -233,10 +284,138 @@ class WardriveDb private constructor(ctx: Context) :
         return s.copy(sent = sent, rx = rx)
     }
 
-    /** Borra pings y recepciones (los nodos conocidos se conservan). */
+    /** Borra todos los wardrives (los nodos conocidos se conservan). */
     fun clearMeasurements() {
-        writableDatabase.execSQL("DELETE FROM pings")
-        writableDatabase.execSQL("DELETE FROM rx")
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM pings")
+            db.execSQL("DELETE FROM rx")
+            db.execSQL("DELETE FROM track")
+            db.execSQL("DELETE FROM sessions")
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    // ---------------- Ruta ----------------
+
+    fun insertTrack(t: TrackPoint) {
+        writableDatabase.insert("track", null, ContentValues().apply {
+            put("session", t.session)
+            put("ts", t.ts)
+            put("lat", t.lat)
+            put("lon", t.lon)
+            put("acc", t.acc)
+        })
+    }
+
+    fun allTrack(): List<TrackPoint> =
+        readableDatabase.rawQuery("SELECT * FROM track ORDER BY ts", null).use { c ->
+            val out = ArrayList<TrackPoint>(c.count)
+            while (c.moveToNext()) {
+                out.add(
+                    TrackPoint(
+                        session = c.str("session").orEmpty(),
+                        ts = c.long("ts") ?: 0,
+                        lat = c.dbl("lat") ?: 0.0,
+                        lon = c.dbl("lon") ?: 0.0,
+                        acc = c.flt("acc"),
+                    )
+                )
+            }
+            out
+        }
+
+    // ---------------- Wardrives (sesiones) ----------------
+
+    fun sessionMeta(): Map<String, SessionMeta> =
+        readableDatabase.rawQuery("SELECT * FROM sessions", null).use { c ->
+            val out = HashMap<String, SessionMeta>()
+            while (c.moveToNext()) {
+                val id = c.str("id") ?: continue
+                out[id] = SessionMeta(id, c.str("name"), c.str("imported_from"), c.long("created") ?: 0)
+            }
+            out
+        }
+
+    /** Registra un wardrive nuevo, si no existía. */
+    fun ensureSession(id: String, created: Long) {
+        writableDatabase.insertWithOnConflict("sessions", null, ContentValues().apply {
+            put("id", id)
+            put("created", created)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    fun renameSession(id: String, name: String?) {
+        val db = writableDatabase
+        val v = ContentValues().apply { put("name", name) }
+        if (db.update("sessions", v, "id = ?", arrayOf(id)) == 0) {
+            v.put("id", id)
+            db.insert("sessions", null, v)
+        }
+    }
+
+    fun deleteSession(id: String) {
+        val db = writableDatabase
+        val args = arrayOf(id)
+        db.beginTransaction()
+        try {
+            db.delete("pings", "session = ?", args)
+            db.delete("rx", "session = ?", args)
+            db.delete("track", "session = ?", args)
+            db.delete("sessions", "id = ?", args)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun sessionExists(id: String): Boolean {
+        val args = arrayOf(id)
+        for (sql in listOf(
+            "SELECT 1 FROM sessions WHERE id = ? LIMIT 1",
+            "SELECT 1 FROM pings WHERE session = ? LIMIT 1",
+            "SELECT 1 FROM rx WHERE session = ? LIMIT 1",
+        )) {
+            if (readableDatabase.rawQuery(sql, args).use { it.moveToFirst() }) return true
+        }
+        return false
+    }
+
+    /**
+     * Guarda un wardrive importado, todo o nada. Devuelve false si ya estaba importado.
+     * Solo inserta filas con valores ya validados y siempre mediante parámetros.
+     */
+    fun importWardrive(w: ShareFormat.Wardrive, importedFrom: String): Boolean {
+        if (sessionExists(w.id)) return false
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.insert("sessions", null, ContentValues().apply {
+                put("id", w.id)
+                put("name", w.name)
+                put("imported_from", importedFrom)
+                put("created", w.created)
+            })
+            for (p in w.pings) db.insert("pings", null, pingValues(p))
+            for (r in w.rx) db.insert("rx", null, rxValues(r))
+            for (t in w.track) {
+                db.insert("track", null, ContentValues().apply {
+                    put("session", t.session)
+                    put("ts", t.ts)
+                    put("lat", t.lat)
+                    put("lon", t.lon)
+                    put("acc", t.acc)
+                })
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        trimRx()
+        return true
     }
 }
 

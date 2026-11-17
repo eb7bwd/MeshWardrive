@@ -54,5 +54,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cp MeshWardrive.apk "MeshWardrive-$VERSION.apk"
-          gh release create "$GITHUB_REF_NAME" "MeshWardrive-$VERSION.apk" \
-            --title "MeshWardrive $VERSION" --generate-notes
+          NOTES="docs/release-notes/$GITHUB_REF_NAME.md"
+          if [ -f "$NOTES" ]; then
+            gh release create "$GITHUB_REF_NAME" "MeshWardrive-$VERSION.apk" \
+              --title "MeshWardrive $VERSION" --notes-file "$NOTES"
+          else
+            gh release create "$GITHUB_REF_NAME" "MeshWardrive-$VERSION.apk" \
+              --title "MeshWardrive $VERSION" --generate-notes
+          fi

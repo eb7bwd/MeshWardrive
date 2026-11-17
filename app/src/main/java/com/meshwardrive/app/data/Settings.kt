@@ -23,6 +23,35 @@ class Settings(ctx: Context) {
     val includeCoords: Boolean get() = p.getBoolean("include_coords", true)
     val cellSizeM: Int get() = int("cell_size_m", 150).coerceIn(25, 5000)
 
+    /** Texto que va delante del número de cada ping (por defecto WD). */
+    val pingPrefix: String get() = TextSafety.pingPrefix(p.getString("ping_prefix", "WD"))
+
+    val chUtilPause: Boolean get() = p.getBoolean("chutil_pause", false)
+    val chUtilThreshold: Int get() = int("chutil_threshold", 25).coerceIn(5, 100)
+
+    val smartPing: Boolean get() = p.getBoolean("smart_ping", false)
+    val smartMin: Int get() = int("smart_min", 3).coerceIn(1, 100)
+
+    val nodeGps: Boolean get() = p.getBoolean("node_gps", false)
+
+    /** Guardar todo lo que oye el nodo; si es false solo se guarda lo dirigido a nosotros (ACK y respuestas). */
+    var recordPassive: Boolean
+        get() = p.getBoolean("record_passive", true)
+        set(v) = p.edit { putBoolean("record_passive", v) }
+
+    /** Último nivel de llenado avisado por notificación y dentro de la app. */
+    var storageNotified: Int
+        get() = p.getInt("storage_notified", 0)
+        set(v) = p.edit { putInt("storage_notified", v) }
+    var storageShown: Int
+        get() = p.getInt("storage_shown", 0)
+        set(v) = p.edit { putInt("storage_shown", v) }
+
+    /** Minutos sin nodo antes de dejar de reconectar; 0 = no rendirse nunca. */
+    val reconnectGiveUpMin: Int get() = int("reconnect_giveup_min", 10).coerceIn(0, 1440)
+
+    val shareName: String? get() = TextSafety.clean(p.getString("share_name", null), 40)
+
     var targetNode: Int
         get() = p.getLong("target_node", 0L).toInt()
         set(v) = p.edit { putLong("target_node", v.toLong() and 0xFFFFFFFFL) }
@@ -55,6 +84,14 @@ class Settings(ctx: Context) {
     var showHeat: Boolean
         get() = p.getBoolean("layer_heat", true)
         set(v) = p.edit { putBoolean("layer_heat", v) }
+
+    var showRoute: Boolean
+        get() = p.getBoolean("layer_route", true)
+        set(v) = p.edit { putBoolean("layer_route", v) }
+
+    var showGaps: Boolean
+        get() = p.getBoolean("layer_gaps", false)
+        set(v) = p.edit { putBoolean("layer_gaps", v) }
 
     var showCells: Boolean
         get() = p.getBoolean("layer_cells", false)

@@ -21,44 +21,112 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-            <com.google.android.material.card.MaterialCardView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="top"
-                android:layout_margin="8dp"
-                app:cardElevation="4dp">
+                android:orientation="vertical"
+                android:padding="8dp">
 
-                <LinearLayout
+                <!-- Tarjeta de estado: se pliega al tocarla para no tapar el mapa -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="10dp">
+                    android:clickable="true"
+                    android:focusable="true"
+                    app:cardElevation="4dp">
 
-                    <TextView
-                        android:id="@+id/tvConn"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textStyle="bold" />
+                        android:orientation="vertical"
+                        android:padding="10dp">
 
-                    <TextView
-                        android:id="@+id/tvGps"
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/tvConn"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvCollapse"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:paddingStart="8dp"
+                                android:text="▴"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/statusDetails"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvGps"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvStats"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/tvLast"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Aviso de filtro activo: cobertura de un repetidor o comparación -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardFilter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="?attr/colorSecondaryContainer"
+                    app:cardElevation="4dp">
+
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textSize="13sp" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="10dp">
 
-                    <TextView
-                        android:id="@+id/tvStats"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:textSize="13sp" />
+                        <TextView
+                            android:id="@+id/tvFilter"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:paddingVertical="8dp"
+                            android:textColor="?attr/colorOnSecondaryContainer"
+                            android:textSize="13sp" />
 
-                    <TextView
-                        android:id="@+id/tvLast"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:textSize="13sp" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+                        <Button
+                            android:id="@+id/btnFilterClose"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/close"
+                            android:text="✕" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
 
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/fabCenter"
@@ -66,7 +134,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|end"
                 android:layout_marginEnd="16dp"
-                android:layout_marginBottom="80dp"
+                android:layout_marginBottom="112dp"
                 android:contentDescription="@string/center_me"
                 app:srcCompat="@android:drawable/ic_menu_mylocation" />
 
@@ -74,38 +142,60 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom"
-                android:orientation="horizontal"
+                android:orientation="vertical"
                 android:padding="8dp">
 
-                <Button
-                    android:id="@+id/btnRun"
-                    android:layout_width="0dp"
+                <!-- Leyenda: se rellena desde el código según lo que muestre el mapa -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:layout_weight="1.7"
-                    android:maxLines="1"
-                    android:text="@string/start" />
+                    android:layout_marginBottom="6dp"
+                    app:cardElevation="2dp">
 
-                <Button
-                    android:id="@+id/btnPing"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="4dp"
-                    android:layout_weight="1"
-                    android:maxLines="1"
-                    android:paddingHorizontal="8dp"
-                    android:text="@string/ping" />
+                    <LinearLayout
+                        android:id="@+id/legend"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="4dp" />
+                </com.google.android.material.card.MaterialCardView>
 
-                <Button
-                    android:id="@+id/btnLayers"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:layout_weight="1.3"
-                    android:maxLines="1"
-                    android:paddingHorizontal="8dp"
-                    android:text="@string/layers" />
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnRun"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1.7"
+                        android:maxLines="1"
+                        android:text="@string/start" />
+
+                    <Button
+                        android:id="@+id/btnPing"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginHorizontal="4dp"
+                        android:layout_weight="1"
+                        android:maxLines="1"
+                        android:paddingHorizontal="8dp"
+                        android:text="@string/ping" />
+
+                    <Button
+                        android:id="@+id/btnLayers"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1.3"
+                        android:maxLines="1"
+                        android:paddingHorizontal="8dp"
+                        android:text="@string/layers" />
+                </LinearLayout>
             </LinearLayout>
         </FrameLayout>
 
@@ -174,181 +264,327 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- 2 · Datos -->
-        <ScrollView
+        <!-- 2 · Datos: tres apartados -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
-            <LinearLayout
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/dataTabs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:layout_margin="12dp"
+                app:selectionRequired="true"
+                app:singleSelection="true">
 
                 <Button
-                    android:id="@+id/btnSessions"
+                    android:id="@+id/segWardrives"
                     style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:textAlignment="viewStart"
-                    app:icon="@drawable/ic_dropdown"
-                    app:iconGravity="end" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    android:text="@string/sessions_hint"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/summary_title"
-                    android:textAppearance="?attr/textAppearanceTitleLarge" />
-
-                <TextView
-                    android:id="@+id/tvDataStats"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:lineSpacingExtra="4dp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:text="@string/chart_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    android:layout_weight="1"
+                    android:maxLines="1"
+                    android:paddingHorizontal="4dp"
+                    android:text="@string/seg_wardrives" />
 
                 <Button
-                    android:id="@+id/btnSession"
+                    android:id="@+id/segAnalysis"
                     style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:textAlignment="viewStart"
-                    app:icon="@drawable/ic_dropdown"
-                    app:iconGravity="end" />
+                    android:layout_weight="1"
+                    android:maxLines="1"
+                    android:paddingHorizontal="4dp"
+                    android:text="@string/seg_analysis" />
 
-                <com.meshwardrive.app.ui.SignalChartView
-                    android:id="@+id/chart"
-                    android:layout_width="match_parent"
-                    android:layout_height="260dp" />
-
-                <TextView
-                    android:layout_width="match_parent"
+                <Button
+                    android:id="@+id/segExport"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/chart_hint"
-                    android:textSize="12sp" />
+                    android:layout_weight="1"
+                    android:maxLines="1"
+                    android:paddingHorizontal="4dp"
+                    android:text="@string/export_title" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:text="@string/relays_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/relays_hint"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/tvRelaysNote"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/relays_fw_note"
-                    android:textSize="12sp"
-                    android:textStyle="italic"
-                    android:visibility="gone" />
+            <ScrollView
+                android:id="@+id/panelWardrives"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
 
                 <LinearLayout
-                    android:id="@+id/relaysContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:orientation="vertical" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="24dp">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:text="@string/export_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <Button
+                        android:id="@+id/btnSessions"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textAlignment="viewStart"
+                        app:icon="@drawable/ic_dropdown"
+                        app:iconGravity="end" />
 
-                <Button
-                    android:id="@+id/btnExpImage"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/exp_image" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/sessions_hint"
+                        android:textSize="12sp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="@string/seg_wardrives"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/wd_list_hint"
+                        android:textSize="12sp" />
+                    <LinearLayout
+                        android:id="@+id/wardrivesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:orientation="vertical" />
 
-                <Button
-                    android:id="@+id/btnExpCells"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/exp_cells" />
+                    <TextView
+                        android:id="@+id/tvStorage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
 
-                <Button
-                    android:id="@+id/btnExpKml"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/exp_kml" />
+                    <Button
+                        android:id="@+id/btnShare"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/share_btn" />
+                    <Button
+                        android:id="@+id/btnImport"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/import_btn" />
+                    <Button
+                        android:id="@+id/btnClear"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="@string/clear_data" />
 
-                <Button
-                    android:id="@+id/btnExpGeo"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/exp_points" />
+                </LinearLayout>
+            </ScrollView>
 
-                <Button
-                    android:id="@+id/btnExpPings"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/exp_pings" />
+            <ScrollView
+                android:id="@+id/panelAnalysis"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone">
 
-                <Button
-                    android:id="@+id/btnExpRx"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/exp_rx" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="24dp">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:text="@string/maps_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/summary_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <TextView
+                        android:id="@+id/tvDataStats"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:lineSpacingExtra="4dp" />
 
-                <Button
-                    android:id="@+id/btnOffline"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textAlignment="viewStart"
-                    app:icon="@drawable/ic_dropdown"
-                    app:iconGravity="end"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/offline_map" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
 
-                <Button
-                    android:id="@+id/btnClear"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                        <Button
+                            android:id="@+id/btnReport"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:layout_weight="1"
+                            android:text="@string/report_btn" />
+
+                        <Button
+                            android:id="@+id/btnCompare"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:layout_weight="1"
+                            android:text="@string/compare_btn" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="24dp"
+                        android:text="@string/chart_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <Button
+                        android:id="@+id/btnSession"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textAlignment="viewStart"
+                        app:icon="@drawable/ic_dropdown"
+                        app:iconGravity="end" />
+
+                    <com.meshwardrive.app.ui.SignalChartView
+                        android:id="@+id/chart"
+                        android:layout_width="match_parent"
+                        android:layout_height="280dp"
+                        android:layout_marginTop="4dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/chart_hint"
+                        android:textSize="12sp" />
+                    <Button
+                        android:id="@+id/btnHowCalc"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/how_calc_btn" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/relays_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/relays_hint"
+                        android:textSize="12sp" />
+                    <TextView
+                        android:id="@+id/tvRelaysNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/relays_fw_note"
+                        android:textSize="12sp"
+                        android:textStyle="italic"
+                        android:visibility="gone" />
+                    <LinearLayout
+                        android:id="@+id/relaysContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:orientation="vertical" />
+
+                </LinearLayout>
+            </ScrollView>
+
+            <ScrollView
+                android:id="@+id/panelExport"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone">
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:text="@string/clear_data" />
-            </LinearLayout>
-        </ScrollView>
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="24dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/export_privacy_hint"
+                        android:textSize="12sp"
+                        android:textStyle="italic" />
+                    <Button
+                        android:id="@+id/btnExpImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/exp_image" />
+
+                    <Button
+                        android:id="@+id/btnExpCells"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/exp_cells" />
+                    <Button
+                        android:id="@+id/btnExpKml"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/exp_kml" />
+                    <Button
+                        android:id="@+id/btnExpGeo"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/exp_points" />
+                    <Button
+                        android:id="@+id/btnExpPings"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/exp_pings" />
+                    <Button
+                        android:id="@+id/btnExpRx"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/exp_rx" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="24dp"
+                        android:text="@string/maps_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <Button
+                        android:id="@+id/btnOffline"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textAlignment="viewStart"
+                        app:icon="@drawable/ic_dropdown"
+                        app:iconGravity="end"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/offline_map" />
+
+                </LinearLayout>
+            </ScrollView>
+            </FrameLayout>
+        </LinearLayout>
 
         <!-- 3 · Registro -->
         <LinearLayout

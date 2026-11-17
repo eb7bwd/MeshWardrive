@@ -2,6 +2,7 @@ package com.meshwardrive.app.data
 
 const val MODE_CHANNEL = "channel"
 const val MODE_DIRECT = "direct"
+const val MODE_LISTEN = "listen"
 
 enum class PingStatus(val label: String) {
     PENDING("Waiting"),
@@ -96,4 +97,21 @@ data class Stats(
     val failed: Int = 0,
     val pending: Int = 0,
     val rx: Int = 0,
+)
+
+/** Punto de la ruta recorrida durante un wardrive. */
+data class TrackPoint(
+    val session: String,
+    val ts: Long,
+    val lat: Double,
+    val lon: Double,
+    val acc: Float?,
+)
+
+/** Datos de un wardrive: nombre que le pone el usuario y, si es importado, quién lo compartió. */
+data class SessionMeta(
+    val id: String,
+    val name: String? = null,
+    val importedFrom: String? = null,
+    val created: Long = 0,
 )

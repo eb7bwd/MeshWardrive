@@ -27,6 +27,10 @@ import com.meshwardrive.app.R
 import com.meshwardrive.app.ble.MeshBle
 import com.meshwardrive.app.data.MODE_CHANNEL
 import com.meshwardrive.app.data.MODE_DIRECT
+import com.meshwardrive.app.data.MODE_LISTEN
+import com.meshwardrive.app.data.CoverageGrid
+import com.meshwardrive.app.data.TextSafety
+import com.meshwardrive.app.data.TrackPoint
 import com.meshwardrive.app.data.NodeEntry
 import com.meshwardrive.app.data.PingRow
 import com.meshwardrive.app.data.PingStatus
@@ -60,6 +64,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class WardriveService : Service(), MeshBle.Listener {
@@ -75,6 +80,9 @@ class WardriveService : Service(), MeshBle.Listener {
 
         private const val NOTIF_CHANNEL = "wardrive"
         private const val NOTIF_ID = 1
+        private const val ALERT_CHANNEL = "alerts"
+        private const val ALERT_ID = 2
+        private const val STORAGE_ID = 3
 
         fun send(ctx: Context, action: String, address: String? = null, name: String? = null) {
             val i = Intent(ctx, WardriveService::class.java).setAction(action)
@@ -112,6 +120,12 @@ class WardriveService : Service(), MeshBle.Listener {
     private var lastPingLoc: Location? = null
     private var locationActive = false
     private var gpsOffLogged = false
+    private var disconnectedSince = 0L
+    private var nodeFix: Location? = null
+    private var lastTrackLoc: Location? = null
+    private var lastTrackAt = 0L
+    private val cellCounts = HashMap<CoverageGrid.Key, Int>()
+    private var cellCountsSize = 0
     private var wakeLock: PowerManager.WakeLock? = null
 
     private class PendingPing(val row: PingRow) {
@@ -151,6 +165,7 @@ class WardriveService : Service(), MeshBle.Listener {
                 address = addr
                 deviceName = intent.getStringExtra(EXTRA_NAME)
                 wantConnected = true
+                disconnectedSince = 0L
                 reconnectJob?.cancel()
                 WardriveState.conn.value = WardriveState.ConnInfo(
                     conn = Conn.CONNECTING, deviceName = deviceName, address = addr,
@@ -221,6 +236,13 @@ class WardriveService : Service(), MeshBle.Listener {
                 WardriveState.conn.value = WardriveState.ConnInfo()
                 return@launch
             }
+            val now = System.currentTimeMillis()
+            if (disconnectedSince == 0L) disconnectedSince = now
+            val giveUpMin = settings.reconnectGiveUpMin
+            if (giveUpMin > 0 && now - disconnectedSince >= giveUpMin * 60_000L) {
+                giveUpReconnect(giveUpMin)
+                return@launch
+            }
             WardriveState.conn.value = WardriveState.conn.value.copy(
                 conn = Conn.CONNECTING, message = getString(R.string.fail_retry, reason ?: "?"),
             )
@@ -232,6 +254,21 @@ class WardriveService : Service(), MeshBle.Listener {
                 if (wantConnected && addr != null && !ble.isActive) ble.connect(addr)
             }
         }
+    }
+
+    /** El nodo lleva demasiado tiempo sin volver: se para todo y se avisa. */
+    private fun giveUpReconnect(minutes: Int) {
+        val msg = getString(R.string.gave_up_msg, minutes)
+        wantConnected = false
+        reconnectJob?.cancel()
+        stopWardrive()
+        ble.disconnect()
+        WardriveState.conn.value = WardriveState.ConnInfo(message = msg)
+        WardriveState.log(msg)
+        stopLocation()
+        notifyAlert(getString(R.string.gave_up_title), msg)
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onFromRadio(bytes: ByteArray) {
@@ -253,6 +290,7 @@ class WardriveService : Service(), MeshBle.Listener {
             is FromRadio.NodeInfo -> {
                 val i = msg.info
                 mergeNode(i.num, i.user, i.position, i.lastHeard.toLong() * 1000L, publish = false)
+                if (i.num == myNodeNum && myNodeNum != 0) i.channelUtil?.let { WardriveState.channelUtil.value = it }
             }
             is FromRadio.Channel -> channels[msg.channel.index] = msg.channel
             is FromRadio.ConfigComplete -> if (msg.id == configId) onConfigComplete()
@@ -263,6 +301,7 @@ class WardriveService : Service(), MeshBle.Listener {
     }
 
     private fun onConfigComplete() {
+        disconnectedSince = 0L
         WardriveState.nodes.value = nodes.toMap()
         val ch = resolveChannel()
         val myName = nodes[myNodeNum]?.label
@@ -301,6 +340,16 @@ class WardriveService : Service(), MeshBle.Listener {
             if (pp != null && pp.row.packetId == d.requestId) handleRouting(pp, p, d)
         }
 
+        // Telemetría y posición de nuestro propio nodo
+        if (d != null && p.from == myNodeNum && myNodeNum != 0) {
+            when (d.portnum) {
+                PortNum.TELEMETRY -> runCatching { MeshProto.decodeChannelUtil(d.payload) }.getOrNull()
+                    ?.let { WardriveState.channelUtil.value = it }
+                PortNum.POSITION -> runCatching { MeshProto.decodePosition(d.payload) }.getOrNull()
+                    ?.let { onNodePosition(it) }
+            }
+        }
+
         if (p.from == myNodeNum || p.from == 0) return
 
         val now = System.currentTimeMillis()
@@ -322,7 +371,25 @@ class WardriveService : Service(), MeshBle.Listener {
             p.transportMechanism != Transport.MULTICAST_UDP &&
             p.transportMechanism != Transport.API &&
             p.hasRadioInfo
-        if (viaRadio) logRx(p, now)
+        // Con el registro pasivo desactivado solo se guarda lo dirigido a nosotros (ACK y respuestas),
+        // salvo en modo solo escucha, que no tendría sentido sin él.
+        val keep = settings.recordPassive || settings.mode == MODE_LISTEN || p.to == myNodeNum
+        if (viaRadio && keep) logRx(p, now)
+    }
+
+    private var rxSinceCheck = 0
+
+    /** Avisa cuando la recepción pasiva se acerca al límite, antes de que se borre lo más antiguo. */
+    private fun checkStorage() {
+        val n = runCatching { db.rxCount() }.getOrNull() ?: return
+        val level = WardriveDb.storageLevel(n)
+        val prev = settings.storageNotified
+        if (level < prev) settings.storageNotified = level
+        if (level <= prev) return
+        settings.storageNotified = level
+        val msg = getString(R.string.storage_msg, WardriveDb.storagePct(n))
+        WardriveState.log(msg)
+        notifyAlert(getString(R.string.storage_title), msg, STORAGE_ID)
     }
 
     private fun logRx(p: MeshPacket, now: Long) {
@@ -348,6 +415,10 @@ class WardriveService : Service(), MeshBle.Listener {
         )
         WardriveState.stats.value = WardriveState.stats.value.let { it.copy(rx = it.rx + 1) }
         WardriveState.bumpData()
+        if (++rxSinceCheck >= 250) {
+            rxSinceCheck = 0
+            checkStorage()
+        }
     }
 
     private fun handleRouting(pp: PendingPing, p: MeshPacket, d: DataMsg) {
@@ -391,9 +462,10 @@ class WardriveService : Service(), MeshBle.Listener {
         val isNew = !nodes.containsKey(num)
         val old = nodes[num] ?: NodeEntry(num)
         val n = old.copy(
-            userId = user?.id?.ifEmpty { null } ?: old.userId,
-            longName = user?.longName?.ifEmpty { null } ?: old.longName,
-            shortName = user?.shortName?.ifEmpty { null } ?: old.shortName,
+            // Los nombres llegan por radio y los pone quien quiere: se limpian y se acortan
+            userId = TextSafety.clean(user?.id, 16) ?: old.userId,
+            longName = TextSafety.clean(user?.longName, 40) ?: old.longName,
+            shortName = TextSafety.clean(user?.shortName, 8) ?: old.shortName,
             lat = pos?.lat ?: old.lat,
             lon = pos?.lon ?: old.lon,
             lastHeard = maxOf(old.lastHeard, heardAt),
@@ -417,9 +489,16 @@ class WardriveService : Service(), MeshBle.Listener {
         if (WardriveState.running.value) return
         session = newSessionId()
         WardriveState.session.value = session
+        db.ensureSession(session, System.currentTimeMillis())
         seq = 0
         lastPingAt = 0
         lastPingLoc = null
+        lastTrackLoc = null
+        lastTrackAt = 0L
+        loadCellCounts()
+        if (settings.mode == MODE_LISTEN) WardriveState.log(getString(R.string.blk_listen))
+        else if (!settings.recordPassive) WardriveState.log(getString(R.string.log_passive_off))
+        scope.launch { checkStorage() }
         WardriveState.running.value = true
         // Mantiene la CPU despierta con la pantalla apagada para que los pings salgan a su hora
         if (wakeLock == null) {
@@ -458,7 +537,18 @@ class WardriveService : Service(), MeshBle.Listener {
 
     private suspend fun maybeAutoPing() {
         if (pending != null) return
+        if (settings.mode == MODE_LISTEN) {
+            WardriveState.blocker.value = getString(R.string.blk_listen)
+            return
+        }
         if (System.currentTimeMillis() - lastPingAt < settings.intervalS * 1000L) return
+        if (settings.chUtilPause) {
+            val u = WardriveState.channelUtil.value
+            if (u != null && u >= settings.chUtilThreshold) {
+                blocked(getString(R.string.blk_chutil, u.roundToInt()), false)
+                return
+            }
+        }
         val loc = currentFix(10_000)
         val last = lastPingLoc
         if (loc != null && last != null) {
@@ -469,7 +559,30 @@ class WardriveService : Service(), MeshBle.Listener {
                 return
             }
         }
+        if (loc != null && settings.smartPing) {
+            val n = cellCount(loc)
+            if (n >= settings.smartMin) {
+                WardriveState.blocker.value = getString(R.string.blk_cell_done, n)
+                return
+            }
+        }
         doPing(manual = false)
+    }
+
+    /** Pings ya hechos por celda, para el ping inteligente. */
+    private fun loadCellCounts() {
+        cellCounts.clear()
+        cellCountsSize = settings.cellSizeM
+        val size = cellCountsSize.toDouble()
+        for (p in db.allPings()) {
+            val k = CoverageGrid.keyOf(p.lat, p.lon, size)
+            cellCounts[k] = (cellCounts[k] ?: 0) + 1
+        }
+    }
+
+    private fun cellCount(loc: Location): Int {
+        if (cellCountsSize != settings.cellSizeM) loadCellCounts()
+        return cellCounts[CoverageGrid.keyOf(loc.latitude, loc.longitude, cellCountsSize.toDouble())] ?: 0
     }
 
     private suspend fun doPing(manual: Boolean) {
@@ -479,6 +592,10 @@ class WardriveService : Service(), MeshBle.Listener {
         }
         if (pending != null) {
             if (manual) WardriveState.log(getString(R.string.log_wait_prev))
+            return
+        }
+        if (settings.mode == MODE_LISTEN) {
+            blocked(getString(R.string.blk_listen), manual)
             return
         }
         val loc = currentFix(if (manual) 30_000 else 10_000)
@@ -513,7 +630,7 @@ class WardriveService : Service(), MeshBle.Listener {
 
         seq++
         val text = buildString {
-            append("WD #").append(seq)
+            append(settings.pingPrefix).append(" #").append(seq)
             if (settings.includeCoords) {
                 append(String.format(Locale.US, " %.4f,%.4f", loc.latitude, loc.longitude))
             }
@@ -540,6 +657,10 @@ class WardriveService : Service(), MeshBle.Listener {
         WardriveState.blocker.value = null
         lastPingAt = row.ts
         lastPingLoc = loc
+        if (cellCountsSize == settings.cellSizeM) {
+            val k = CoverageGrid.keyOf(loc.latitude, loc.longitude, cellCountsSize.toDouble())
+            cellCounts[k] = (cellCounts[k] ?: 0) + 1
+        }
 
         val packet = MeshPacket(
             to = dest,
@@ -628,6 +749,7 @@ class WardriveService : Service(), MeshBle.Listener {
                 }
             }
             WardriveState.location.value = location
+            if (WardriveState.running.value) scope.launch { maybeTrack(location) }
         }
 
         override fun onProviderEnabled(provider: String) {
@@ -675,10 +797,63 @@ class WardriveService : Service(), MeshBle.Listener {
         locationActive = false
     }
 
+    private fun ageMs(l: Location): Long = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000
+
+    /**
+     * Posición a usar. Por defecto la del móvil; con la opción "GPS del nodo", la del nodo
+     * cuando la del móvil falta o no alcanza la precisión mínima.
+     */
     private fun currentFix(maxAgeMs: Long): Location? {
-        val l = WardriveState.location.value ?: return null
-        val ageMs = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000
-        return if (ageMs <= maxAgeMs) l else null
+        val phone = WardriveState.location.value?.takeIf { ageMs(it) <= maxAgeMs }
+        if (!settings.nodeGps) return phone
+        val node = nodeFix?.takeIf { ageMs(it) <= maxAgeMs } ?: return phone
+        val phoneGood = phone != null && (!phone.hasAccuracy() || phone.accuracy <= settings.maxAccuracyM)
+        return if (phoneGood) phone else node
+    }
+
+    /** Posición que envía nuestro propio nodo, si tiene GPS. */
+    private fun onNodePosition(pos: PositionMsg) {
+        val lat = pos.lat ?: return
+        val lon = pos.lon ?: return
+        val nowS = System.currentTimeMillis() / 1000
+        // Una posición antigua no sirve para situar el ping de ahora
+        if (pos.time != 0 && kotlin.math.abs(nowS - (pos.time.toLong() and 0xFFFFFFFFL)) > 120) return
+        val hdop = if (pos.hdop > 0) pos.hdop / 100f else 0f
+        val accM = when {
+            pos.accuracyMm > 0 && hdop > 0f -> pos.accuracyMm / 1000f * hdop
+            pos.accuracyMm > 0 -> pos.accuracyMm / 1000f
+            hdop > 0f -> hdop * 5f
+            else -> 20f
+        }
+        val l = Location("meshtastic-node").apply {
+            latitude = lat
+            longitude = lon
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            accuracy = accM.coerceIn(1f, 10_000f)
+        }
+        nodeFix = l
+        if (settings.nodeGps && WardriveState.running.value && currentFix(10_000) === l) maybeTrack(l)
+    }
+
+    /** Guarda la ruta: un punto cada 15 m de avance, o cada minuto si se avanza poco. */
+    private fun maybeTrack(loc: Location) {
+        if (!WardriveState.running.value) return
+        if (loc.hasAccuracy() && loc.accuracy > settings.maxAccuracyM) return
+        val last = lastTrackLoc
+        val now = System.currentTimeMillis()
+        if (last != null) {
+            val d = loc.distanceTo(last)
+            if (d < 3f) return
+            if (d < 15f && now - lastTrackAt < 60_000L) return
+        }
+        runCatching {
+            db.insertTrack(
+                TrackPoint(session, now, loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy else null)
+            )
+        }
+        lastTrackLoc = loc
+        lastTrackAt = now
     }
 
     private fun hasLocationPermission() =
@@ -692,6 +867,9 @@ class WardriveService : Service(), MeshBle.Listener {
         nm.createNotificationChannel(
             NotificationChannel(NOTIF_CHANNEL, "Wardriving", NotificationManager.IMPORTANCE_LOW)
         )
+        nm.createNotificationChannel(
+            NotificationChannel(ALERT_CHANNEL, getString(R.string.gave_up_title), NotificationManager.IMPORTANCE_DEFAULT)
+        )
     }
 
     private fun buildNotification(text: String): Notification {
@@ -700,14 +878,40 @@ class WardriveService : Service(), MeshBle.Listener {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        return NotificationCompat.Builder(this, NOTIF_CHANNEL)
+        val b = NotificationCompat.Builder(this, NOTIF_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_wardrive)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pi)
+        if (WardriveState.running.value) {
+            // Parar el wardrive sin abrir la app
+            val stop = PendingIntent.getService(
+                this, 1,
+                Intent(this, WardriveService::class.java).setAction(ACTION_STOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            b.addAction(android.R.drawable.ic_media_pause, getString(R.string.stop), stop)
+        }
+        return b.build()
+    }
+
+    private fun notifyAlert(title: String, text: String, id: Int = ALERT_ID) {
+        val pi = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = NotificationCompat.Builder(this, ALERT_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_wardrive)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(pi)
             .build()
+        runCatching { getSystemService(NotificationManager::class.java).notify(id, n) }
     }
 
     private fun goForeground(text: String) {
