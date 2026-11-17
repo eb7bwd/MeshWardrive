@@ -41,16 +41,26 @@ object CoverageGrid {
         val lonC: Double get() = (lon0 + lon1) / 2
     }
 
+    /**
+     * Metros por grado de longitud para la fila y. No se calcula con la latitud exacta de cada fila:
+     * las columnas se cuentan desde Greenwich, y una anchura un poco distinta en cada fila las iría
+     * desplazando (miles de columnas × una diferencia mínima = metros). Se usa la latitud media de la
+     * franja de 1° en la que cae la fila, así todas las filas de esa franja comparten columnas y
+     * quedan perfectamente alineadas. El error de tamaño este-oeste es menor del 1 %.
+     */
+    private fun mPerDegLon(y: Int, sizeM: Double): Double {
+        val latC = (y + 0.5) * sizeM / M_PER_DEG
+        val band = floor(latC) + 0.5
+        return M_PER_DEG * cos(Math.toRadians(band))
+    }
+
     fun keyOf(lat: Double, lon: Double, sizeM: Double): Key {
         val y = floor(lat * M_PER_DEG / sizeM).toInt()
-        val latC = (y + 0.5) * sizeM / M_PER_DEG
-        val mPerDegLon = M_PER_DEG * cos(Math.toRadians(latC))
-        return Key(y, floor(lon * mPerDegLon / sizeM).toInt())
+        return Key(y, floor(lon * mPerDegLon(y, sizeM) / sizeM).toInt())
     }
 
     private fun newCell(k: Key, sizeM: Double): Cell {
-        val latC = (k.y + 0.5) * sizeM / M_PER_DEG
-        val mPerDegLon = M_PER_DEG * cos(Math.toRadians(latC))
+        val mPerDegLon = mPerDegLon(k.y, sizeM)
         return Cell(
             lat0 = k.y * sizeM / M_PER_DEG,
             lat1 = (k.y + 1) * sizeM / M_PER_DEG,
