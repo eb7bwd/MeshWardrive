@@ -89,7 +89,7 @@ La idea del proyecto es que todo el mundo use **el mismo canal** para hacer ward
 - **Nombre:** `wardriving`
 - **Clave (PSK):** `AQ==`
 
-`AQ==` es la clave pública por defecto de Meshtastic, la misma que usa el canal LongFast estándar. Como la conoce todo el mundo, el canal va en la práctica **sin cifrar**: cualquiera que lo añada puede leer los pings, incluidas tus coordenadas si activas «Incluir coordenadas en el mensaje».
+`AQ==` es la clave pública por defecto de Meshtastic. Como la conoce todo el mundo, el canal va en la práctica **sin cifrar**: cualquiera que lo añada puede leer los pings, incluidas tus coordenadas si activas «Incluir coordenadas en el mensaje».
 
 Es una propuesta, no una obligación. **La elección es en última instancia tuya:** puedes usar una clave privada para que solo tu grupo vea los pings, o un nombre de canal distinto (se cambia en **Ajustes**). La app funciona igual en cualquier caso.
 
