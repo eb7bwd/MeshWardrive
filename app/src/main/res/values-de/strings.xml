@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">Pings nur in Zellen ohne Daten oder mit wenigen Messungen</string>
     <string name="pref_smart_min">Messungen pro Zelle, bis sie als erledigt gilt</string>
     <string name="pref_node_gps">GPS des Knotens verwenden</string>
-    <string name="pref_node_gps_sum">Hat der Knoten GPS, wird seine Position genutzt, wenn die des Telefons fehlt oder zu ungenau ist</string>
+    <string name="pref_node_gps_sum">Hat der Knoten GPS, wird seine Position genutzt, wenn die des Telefons fehlt oder zu ungenau ist. Der Knoten meldet seine Position nur, wenn er sie sendet (standardmäßig etwa alle 30 s in Bewegung), daher gelten Positionen bis 1 Min.</string>
     <string name="pref_reconnect">Neuverbindung aufgeben nach (Min., 0 = nie)</string>
     <string name="pref_share_name">Dein Name beim Teilen</string>
     <string name="pref_share_name_sum">Leer = Name deines Knotens</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">Gespeicherte Pakete: %1$d von %2$d (%3$d%%)</string>
     <string name="storage_line_warn">Nahe am Limit: Wardrives teilen (sichern) oder löschen, bevor die ältesten Pakete entfernt werden.</string>
     <string name="import_over_limit">⚠ Damit wird das Speicherlimit überschritten: Die %1$d ältesten Pakete würden gelöscht. Sichere sie vorher oder schaffe Platz, wenn du sie behalten willst.</string>
+    <string name="log_gps_restart">GPS liefert keine Positionen mehr: neu angefordert</string>
+    <string name="log_no_gps_node">Keine aktuelle Position von Telefon oder Knoten</string>
+    <string name="gps_node_none">Knoten-GPS: noch keine Position empfangen</string>
+    <string name="gps_node_line">Knoten-GPS: %1$s · vor %2$d s</string>
 </resources>

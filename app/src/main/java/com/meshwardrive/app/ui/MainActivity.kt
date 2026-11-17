@@ -214,6 +214,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         settings = Settings(this)
         db = WardriveDb.get(this)
+        PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(prefSync)
         sessionFilter = settings.sessionFilter
 
         tvConn = findViewById(R.id.tvConn)
@@ -335,6 +336,16 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         map.onPause()
         super.onPause()
+    }
+
+    // El modo se puede cambiar en Ajustes o en Conexión: la pestaña Conexión se refresca en ambos casos
+    private val prefSync = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "mode" || key == "target_node") runOnUiThread { updateStatus() }
+    }
+
+    override fun onDestroy() {
+        PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(prefSync)
+        super.onDestroy()
     }
 
     // ------------------------------------------------------------ pestañas
@@ -1691,7 +1702,15 @@ class MainActivity : AppCompatActivity() {
             val acc = if (l.hasAccuracy()) "±${l.accuracy.toInt()} m" else "±? m"
             getString(R.string.gps_line, acc, age) +
                 (if (WardriveState.running.value) " · " + getString(R.string.gps_running) else "")
-        }
+        } + nodeGpsLine()
+    }
+
+    /** Con la opción "GPS del nodo", también se ve la última posición que ha mandado el nodo. */
+    private fun nodeGpsLine(): String {
+        if (!settings.nodeGps || WardriveState.conn.value.conn == Conn.DISCONNECTED) return ""
+        val n = WardriveState.nodeLocation.value ?: return "\n" + getString(R.string.gps_node_none)
+        val age = ((SystemClock.elapsedRealtimeNanos() - n.elapsedRealtimeNanos) / 1_000_000_000).toInt()
+        return "\n" + getString(R.string.gps_node_line, "±${n.accuracy.toInt()} m", age)
     }
 
     // ------------------------------------------------------------ conexión
@@ -1789,7 +1808,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Modo de ping: canal, solo escucha o directo a un nodo. */
-    private fun showTargetDialog() {
+    fun showTargetDialog() {
         val my = WardriveState.conn.value.myNodeNum
         val nodes = WardriveState.nodes.value.values
             .filter { it.num != my }

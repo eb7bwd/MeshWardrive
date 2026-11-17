@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">يرسل Ping فقط في الخلايا التي لا بيانات فيها أو قليلة القياسات</string>
     <string name="pref_smart_min">عدد القياسات لكل خلية لاعتبارها مقيسة</string>
     <string name="pref_node_gps">استخدام GPS العقدة</string>
-    <string name="pref_node_gps_sum">إذا كان للعقدة GPS، تُستخدم موقعها عند غياب موقع الهاتف أو عدم دقته</string>
+    <string name="pref_node_gps_sum">إذا كان للعقدة GPS، يُستخدم موقعها عند غياب موقع الهاتف أو عدم دقته. لا ترسل العقدة موقعها إلا عند بثه (افتراضيًا كل 30 ث تقريبًا أثناء الحركة)، لذا تُقبل المواقع حتى عمر دقيقة.</string>
     <string name="pref_reconnect">التوقف عن إعادة الاتصال بعد (دقيقة، 0 = أبدًا)</string>
     <string name="pref_share_name">اسمك عند المشاركة</string>
     <string name="pref_share_name_sum">إن تُرك فارغًا يُستخدم اسم عقدتك</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">الحزم المحفوظة: %1$d من %2$d (%3$d%%)</string>
     <string name="storage_line_warn">قريب من الحد: شارك (نسخة احتياطية) أو احذف جولات قبل حذف أقدم الحزم.</string>
     <string name="import_over_limit">⚠ سيتجاوز هذا حد التخزين: ستُحذف أقدم %1$d حزمة مستقبلة. للاحتفاظ بها، احفظ نسخة أو حرّر مساحة أولًا.</string>
+    <string name="log_gps_restart">توقف GPS عن إرسال المواقع: تتم إعادة الطلب</string>
+    <string name="log_no_gps_node">لا يوجد موقع حديث من الهاتف ولا من العقدة</string>
+    <string name="gps_node_none">GPS العقدة: لم يصل أي موقع بعد</string>
+    <string name="gps_node_line">GPS العقدة: %1$s · قبل %2$d ث</string>
 </resources>

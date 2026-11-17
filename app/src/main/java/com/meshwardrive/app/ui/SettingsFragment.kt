@@ -1,5 +1,6 @@
 package com.meshwardrive.app.ui
 
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.InputType
 import androidx.appcompat.app.AppCompatDelegate
@@ -10,6 +11,9 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreferenceCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.meshwardrive.app.R
+import com.meshwardrive.app.data.MODE_CHANNEL
+import com.meshwardrive.app.data.MODE_DIRECT
+import com.meshwardrive.app.data.Settings
 
 class SettingsFragment : PreferenceFragmentCompat() {
 
@@ -44,6 +48,44 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         setupLanguage()
+
+        // Modo directo: sin nodo elegido no sirve, así que se abre el mismo selector que en Conexión
+        findPreference<ListPreference>("mode")?.setOnPreferenceChangeListener { _, value ->
+            if (value == MODE_DIRECT && Settings(requireContext()).targetNode == 0) {
+                (activity as? MainActivity)?.showTargetDialog()
+                false
+            } else true
+        }
+    }
+
+    /**
+     * Algunos ajustes también se cambian fuera de esta pantalla (el modo en Conexión, el registro pasivo
+     * desde el aviso de espacio). La pantalla se crea una vez y no los relee sola, así que se sincroniza aquí.
+     */
+    private val prefSync = SharedPreferences.OnSharedPreferenceChangeListener { sp, key ->
+        when (key) {
+            "mode" -> findPreference<ListPreference>("mode")?.let { p ->
+                val v = sp.getString("mode", MODE_CHANNEL)
+                if (p.value != v) p.value = v
+            }
+            "record_passive" -> findPreference<SwitchPreferenceCompat>("record_passive")?.let { p ->
+                val v = sp.getBoolean("record_passive", true)
+                if (p.isChecked != v) p.isChecked = v
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val sp = preferenceManager.sharedPreferences ?: return
+        sp.registerOnSharedPreferenceChangeListener(prefSync)
+        prefSync.onSharedPreferenceChanged(sp, "mode")
+        prefSync.onSharedPreferenceChanged(sp, "record_passive")
+    }
+
+    override fun onStop() {
+        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(prefSync)
+        super.onStop()
     }
 
     /** Idioma de la app, independiente del del teléfono. */

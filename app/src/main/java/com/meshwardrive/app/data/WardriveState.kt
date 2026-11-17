@@ -29,6 +29,9 @@ object WardriveState {
     /** Identificador del wardrive en curso (o del último). */
     val session = MutableStateFlow("")
     val location = MutableStateFlow<Location?>(null)
+
+    /** Última posición que ha enviado nuestro propio nodo (si tiene GPS). */
+    val nodeLocation = MutableStateFlow<Location?>(null)
     val lastPing = MutableStateFlow<PingRow?>(null)
 
     /** Motivo por el que ahora mismo no sale un ping (sin GPS, sin moverse…), o null. */

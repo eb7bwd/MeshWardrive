@@ -113,7 +113,7 @@ Everything that changes how measuring works lives in **Settings** and is **off**
 | Record everything the node hears | Settings → Measurement | **On** by default. If you turn it off, only what is addressed to you (ACKs and replies) is saved besides the pings: it takes far less space, but the noise chart and the nodes-in-range list get less data. Listen-only mode always records everything. |
 | Smart ping | Settings → Measurement | Only sends pings in cells with no data or fewer measurements than set (3 by default). Saves airtime when you repeat routes. |
 | Pause when the channel is busy | Settings → Measurement | If the node reports channel utilization above the threshold (25 % by default), pings stop until it drops. Current utilization is shown on the map card. |
-| Node GPS | Settings → Measurement | If your node has GPS, its position is used when the phone's is missing or not accurate enough. |
+| Node GPS | Settings → Measurement | If your node has GPS, its position is used when the phone's is missing or not accurate enough. The node only sends its position when it broadcasts it (by default about every 30 s while moving, far less when still), so positions up to 1 minute old are accepted. The map card shows the last one received. |
 | Stop reconnecting | Settings → Connection | If the node has been disconnected for longer than this (10 min by default), the wardrive stops and a notification tells you. 0 = never give up. |
 | Your name when sharing | Settings → Privacy | The name shown in `.mwd` files. If empty, your node's name is used. |
 

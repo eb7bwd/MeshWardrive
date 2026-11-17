@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">Отправлять пинги только в ячейках без данных или с малым числом измерений</string>
     <string name="pref_smart_min">Измерений на ячейку, чтобы считать её измеренной</string>
     <string name="pref_node_gps">Использовать GPS узла</string>
-    <string name="pref_node_gps_sum">Если у узла есть GPS, использовать его координаты, когда координат телефона нет или они неточны</string>
+    <string name="pref_node_gps_sum">Если у узла есть GPS, использовать его координаты, когда координат телефона нет или они неточны. Узел передаёт координаты, только когда рассылает их (по умолчанию примерно раз в 30 с в движении), поэтому принимаются координаты не старше 1 мин.</string>
     <string name="pref_reconnect">Прекратить переподключение через (мин, 0 = никогда)</string>
     <string name="pref_share_name">Ваше имя при отправке</string>
     <string name="pref_share_name_sum">Если пусто, используется имя узла</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">Сохранено пакетов: %1$d из %2$d (%3$d%%)</string>
     <string name="storage_line_warn">Близко к лимиту: поделитесь (резервная копия) или удалите поездки, пока старые пакеты не удалены.</string>
     <string name="import_over_limit">⚠ Это превысит лимит хранения: %1$d самых старых пакетов будут удалены. Чтобы сохранить их, сначала сделайте копию или освободите место.</string>
+    <string name="log_gps_restart">GPS перестал выдавать координаты: запрашиваем снова</string>
+    <string name="log_no_gps_node">Нет свежих координат ни от телефона, ни от узла</string>
+    <string name="gps_node_none">GPS узла: координаты ещё не получены</string>
+    <string name="gps_node_line">GPS узла: %1$s · %2$d с назад</string>
 </resources>

@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">Só envia pings em células sem dados ou com poucas medições</string>
     <string name="pref_smart_min">Medições por célula para a dar como medida</string>
     <string name="pref_node_gps">Usar o GPS do nó</string>
-    <string name="pref_node_gps_sum">Se o nó tiver GPS, usa a sua posição quando a do telemóvel faltar ou não for suficientemente precisa</string>
+    <string name="pref_node_gps_sum">Se o nó tiver GPS, usa a sua posição quando a do telemóvel faltar ou não for suficientemente precisa. O nó só envia a posição quando a emite (por omissão, cerca de 30 s em movimento), por isso aceitam-se posições até 1 min.</string>
     <string name="pref_reconnect">Deixar de voltar a ligar após (min, 0 = nunca)</string>
     <string name="pref_share_name">O seu nome ao partilhar</string>
     <string name="pref_share_name_sum">Se vazio, é usado o nome do seu nó</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">Receções guardadas: %1$d de %2$d (%3$d%%)</string>
     <string name="storage_line_warn">Perto do limite: partilhe (cópia) ou apague wardrives antes que as receções mais antigas sejam apagadas.</string>
     <string name="import_over_limit">⚠ Isto ultrapassa o limite de armazenamento: seriam apagadas as %1$d receções mais antigas. Para as conservar, faça antes uma cópia ou liberte espaço.</string>
+    <string name="log_gps_restart">O GPS deixou de dar posições: a pedir de novo</string>
+    <string name="log_no_gps_node">Sem posição recente do telemóvel nem do nó</string>
+    <string name="gps_node_none">GPS do nó: ainda sem posição</string>
+    <string name="gps_node_line">GPS do nó: %1$s · há %2$d s</string>
 </resources>

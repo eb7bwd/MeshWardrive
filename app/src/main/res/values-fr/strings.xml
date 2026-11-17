@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">N’envoie des pings que dans les cellules sans données ou peu mesurées</string>
     <string name="pref_smart_min">Mesures par cellule pour la considérer comme faite</string>
     <string name="pref_node_gps">Utiliser le GPS du nœud</string>
-    <string name="pref_node_gps_sum">Si le nœud a un GPS, utilise sa position quand celle du téléphone manque ou est trop imprécise</string>
+    <string name="pref_node_gps_sum">Si le nœud a un GPS, utilise sa position quand celle du téléphone manque ou est trop imprécise. Le nœud n’envoie sa position que lorsqu’il la diffuse (par défaut environ toutes les 30 s en mouvement) : les positions de moins d’1 min sont acceptées.</string>
     <string name="pref_reconnect">Arrêter de se reconnecter après (min, 0 = jamais)</string>
     <string name="pref_share_name">Votre nom lors du partage</string>
     <string name="pref_share_name_sum">Si vide, le nom de votre nœud est utilisé</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">Paquets reçus enregistrés : %1$d sur %2$d (%3$d%%)</string>
     <string name="storage_line_warn">Proche de la limite : partagez (sauvegarde) ou supprimez des wardrives avant que les plus anciens paquets soient effacés.</string>
     <string name="import_over_limit">⚠ Cela dépasse la limite de stockage : les %1$d paquets reçus les plus anciens seraient supprimés. Pour les garder, sauvegardez ou libérez de l’espace d’abord.</string>
+    <string name="log_gps_restart">Le GPS ne donne plus de positions : nouvelle demande</string>
+    <string name="log_no_gps_node">Pas de position récente du téléphone ni du nœud</string>
+    <string name="gps_node_none">GPS du nœud : aucune position reçue</string>
+    <string name="gps_node_line">GPS du nœud : %1$s · il y a %2$d s</string>
 </resources>

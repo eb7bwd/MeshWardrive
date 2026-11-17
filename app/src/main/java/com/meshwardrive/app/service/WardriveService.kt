@@ -83,6 +83,7 @@ class WardriveService : Service(), MeshBle.Listener {
         private const val ALERT_CHANNEL = "alerts"
         private const val ALERT_ID = 2
         private const val STORAGE_ID = 3
+        private const val NODE_FIX_MAX_MS = 60_000L
 
         fun send(ctx: Context, action: String, address: String? = null, name: String? = null) {
             val i = Intent(ctx, WardriveService::class.java).setAction(action)
@@ -120,6 +121,8 @@ class WardriveService : Service(), MeshBle.Listener {
     private var lastPingLoc: Location? = null
     private var locationActive = false
     private var gpsOffLogged = false
+    private var gpsWatchJob: Job? = null
+    private var gpsRestartAt = 0L
     private var disconnectedSince = 0L
     private var nodeFix: Location? = null
     private var lastTrackLoc: Location? = null
@@ -600,7 +603,7 @@ class WardriveService : Service(), MeshBle.Listener {
         }
         val loc = currentFix(if (manual) 30_000 else 10_000)
         if (loc == null) {
-            blocked(getString(R.string.log_no_gps), manual)
+            blocked(getString(if (settings.nodeGps) R.string.log_no_gps_node else R.string.log_no_gps), manual)
             return
         }
         if (loc.hasAccuracy() && loc.accuracy > settings.maxAccuracyM) {
@@ -753,7 +756,11 @@ class WardriveService : Service(), MeshBle.Listener {
         }
 
         override fun onProviderEnabled(provider: String) {
-            if (provider == LocationManager.GPS_PROVIDER) gpsOffLogged = false
+            if (provider == LocationManager.GPS_PROVIDER) {
+                gpsOffLogged = false
+                // Algunos móviles no reanudan las posiciones al volver a activar la ubicación
+                restartLocation()
+            }
         }
 
         override fun onProviderDisabled(provider: String) {
@@ -778,6 +785,7 @@ class WardriveService : Service(), MeshBle.Listener {
                 if (WardriveState.location.value == null) WardriveState.location.value = it
             }
             locationActive = true
+            startGpsWatch()
             // Respaldo para interiores: posición por red, si el móvil la ofrece
             runCatching {
                 if (locationManager.allProviders.contains(LocationManager.NETWORK_PROVIDER)) {
@@ -792,9 +800,40 @@ class WardriveService : Service(), MeshBle.Listener {
     }
 
     private fun stopLocation() {
+        gpsWatchJob?.cancel()
+        gpsWatchJob = null
         if (!locationActive) return
         runCatching { locationManager.removeUpdates(locationListener) }
         locationActive = false
+    }
+
+    private fun restartLocation() {
+        if (!locationActive) return
+        gpsRestartAt = SystemClock.elapsedRealtime()
+        runCatching { locationManager.removeUpdates(locationListener) }
+        locationActive = false
+        startLocation()
+    }
+
+    /**
+     * Si el GPS deja de dar posiciones (ubicación apagada y vuelta a encender, ahorro de batería...),
+     * se vuelven a pedir cada 30 s, en vez de quedarse esperando para siempre.
+     */
+    private fun startGpsWatch() {
+        if (gpsWatchJob?.isActive == true) return
+        gpsWatchJob = scope.launch {
+            while (isActive) {
+                delay(5_000)
+                if (!locationActive) continue
+                val last = WardriveState.location.value
+                val stale = last == null || ageMs(last) > 20_000
+                val since = SystemClock.elapsedRealtime() - gpsRestartAt
+                if (stale && since > 30_000 && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    if (WardriveState.running.value) WardriveState.log(getString(R.string.log_gps_restart))
+                    restartLocation()
+                }
+            }
+        }
     }
 
     private fun ageMs(l: Location): Long = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000
@@ -806,7 +845,8 @@ class WardriveService : Service(), MeshBle.Listener {
     private fun currentFix(maxAgeMs: Long): Location? {
         val phone = WardriveState.location.value?.takeIf { ageMs(it) <= maxAgeMs }
         if (!settings.nodeGps) return phone
-        val node = nodeFix?.takeIf { ageMs(it) <= maxAgeMs } ?: return phone
+        // El nodo solo manda su posición cuando la emite (cada ~30 s si se mueve), así que se le da más margen
+        val node = nodeFix?.takeIf { ageMs(it) <= maxOf(maxAgeMs, NODE_FIX_MAX_MS) } ?: return phone
         val phoneGood = phone != null && (!phone.hasAccuracy() || phone.accuracy <= settings.maxAccuracyM)
         return if (phoneGood) phone else node
     }
@@ -833,6 +873,7 @@ class WardriveService : Service(), MeshBle.Listener {
             accuracy = accM.coerceIn(1f, 10_000f)
         }
         nodeFix = l
+        WardriveState.nodeLocation.value = l
         if (settings.nodeGps && WardriveState.running.value && currentFix(10_000) === l) maybeTrack(l)
     }
 

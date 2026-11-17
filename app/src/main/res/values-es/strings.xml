@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">Solo envía pings en celdas sin datos o con pocas mediciones</string>
     <string name="pref_smart_min">Mediciones por celda para darla por medida</string>
     <string name="pref_node_gps">Usar el GPS del nodo</string>
-    <string name="pref_node_gps_sum">Si el nodo tiene GPS, usa su posición cuando la del móvil falte o no sea lo bastante precisa</string>
+    <string name="pref_node_gps_sum">Si el nodo tiene GPS, usa su posición cuando la del móvil falte o no sea lo bastante precisa. El nodo solo manda su posición cuando la emite (por defecto, cada ~30 s si se mueve), así que se aceptan posiciones de hasta 1 min.</string>
     <string name="pref_reconnect">Dejar de reconectar tras (min, 0 = nunca)</string>
     <string name="pref_share_name">Tu nombre al compartir</string>
     <string name="pref_share_name_sum">Si lo dejas vacío se usa el nombre de tu nodo</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">Recepciones guardadas: %1$d de %2$d (%3$d%%)</string>
     <string name="storage_line_warn">Cerca del límite: comparte (copia) o borra wardrives antes de que se borren las recepciones más antiguas.</string>
     <string name="import_over_limit">⚠ Esto supera el límite de almacenamiento: se borrarían las %1$d recepciones más antiguas. Si quieres conservarlas, haz antes una copia o libera espacio.</string>
+    <string name="log_gps_restart">El GPS ha dejado de dar posiciones: se vuelven a pedir</string>
+    <string name="log_no_gps_node">Sin posición reciente del móvil ni del nodo</string>
+    <string name="gps_node_none">GPS del nodo: aún no ha mandado posición</string>
+    <string name="gps_node_line">GPS del nodo: %1$s · hace %2$d s</string>
 </resources>

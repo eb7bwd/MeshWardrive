@@ -113,7 +113,7 @@ Todas las funciones que cambian cómo se mide están en **Ajustes** y vienen **d
 | Guardar todo lo que oye el nodo | Ajustes → Medición | **Activado** por defecto. Si lo desactivas, además de los pings solo se guarda lo dirigido a ti (ACK y respuestas): ocupa mucho menos, pero la gráfica de ruido y la lista de nodos al alcance tienen menos datos. El modo solo escucha siempre lo guarda todo. |
 | Ping inteligente | Ajustes → Medición | Solo envía pings en celdas sin datos o con menos mediciones de las indicadas (3 por defecto). Ahorra tiempo de aire al repetir rutas. |
 | Pausa si el canal está saturado | Ajustes → Medición | Si el nodo informa de una ocupación del canal por encima del umbral (25 % por defecto), deja de enviar pings hasta que baje. La ocupación actual se ve en la tarjeta del mapa. |
-| GPS del nodo | Ajustes → Medición | Si tu nodo tiene GPS, usa su posición cuando la del móvil falta o no es lo bastante precisa. |
+| GPS del nodo | Ajustes → Medición | Si tu nodo tiene GPS, usa su posición cuando la del móvil falta o no es lo bastante precisa. El nodo solo manda su posición cuando la emite (por defecto, cada ~30 s si se mueve, mucho menos si está quieto), así que se aceptan posiciones de hasta 1 minuto. La tarjeta del mapa muestra la última que ha llegado. |
 | Dejar de reconectar | Ajustes → Conexión | Si el nodo lleva desconectado más de esos minutos (10 por defecto), para el wardrive y avisa con una notificación. 0 = no rendirse nunca. |
 | Tu nombre al compartir | Ajustes → Privacidad | El nombre que aparece en los archivos `.mwd`. Si lo dejas vacío, se usa el de tu nodo. |
 

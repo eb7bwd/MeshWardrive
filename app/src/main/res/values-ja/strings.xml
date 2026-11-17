@@ -266,7 +266,7 @@
     <string name="pref_smart_sum">データがない、または測定の少ないセルでのみPingを送信します</string>
     <string name="pref_smart_min">測定済みとみなす1セルあたりの回数</string>
     <string name="pref_node_gps">ノードのGPSを使用</string>
-    <string name="pref_node_gps_sum">ノードにGPSがある場合、端末の位置がない、または精度が足りないときにノードの位置を使います</string>
+    <string name="pref_node_gps_sum">ノードにGPSがある場合、端末の位置がない、または精度が足りないときにノードの位置を使います。ノードは位置を送信するときにしか位置を伝えない（初期設定では移動中に約30秒ごと）ため、1分以内の位置を受け付けます。</string>
     <string name="pref_reconnect">再接続をやめるまでの時間（分、0 = やめない）</string>
     <string name="pref_share_name">共有時の名前</string>
     <string name="pref_share_name_sum">空欄の場合はノード名を使います</string>
@@ -285,4 +285,8 @@
     <string name="storage_line">保存した受信データ: %1$d / %2$d（%3$d%%）</string>
     <string name="storage_line_warn">上限が近づいています: 古いデータが削除される前に、ウォードライブを共有（バックアップ）または削除してください。</string>
     <string name="import_over_limit">⚠ 保存上限を超えます: 最も古い受信データ%1$d件が削除されます。残したい場合は、先にバックアップするか空きを作ってください。</string>
+    <string name="log_gps_restart">GPSから位置が届かなくなりました。再取得します</string>
+    <string name="log_no_gps_node">端末からもノードからも最新の位置がありません</string>
+    <string name="gps_node_none">ノードGPS: まだ位置を受信していません</string>
+    <string name="gps_node_line">ノードGPS: %1$s · %2$d秒前</string>
 </resources>

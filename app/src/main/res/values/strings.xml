@@ -272,7 +272,7 @@
     <string name="pref_smart_sum">Only send pings in cells with no data or few measurements</string>
     <string name="pref_smart_min">Measurements per cell to consider it done</string>
     <string name="pref_node_gps">Use the node’s GPS</string>
-    <string name="pref_node_gps_sum">If the node has GPS, use its position when the phone’s is missing or not accurate enough</string>
+    <string name="pref_node_gps_sum">If the node has GPS, use its position when the phone\'s is missing or not accurate enough. The node only sends its position when it broadcasts it (by default about every 30 s while moving), so positions up to 1 min old are accepted.</string>
     <string name="pref_reconnect">Stop reconnecting after (min, 0 = never)</string>
     <string name="pref_share_name">Your name when sharing</string>
     <string name="pref_share_name_sum">If empty, your node’s name is used</string>
@@ -291,4 +291,8 @@
     <string name="storage_line">Received packets stored: %1$d of %2$d (%3$d%%)</string>
     <string name="storage_line_warn">Near the limit: share (back up) or delete wardrives before the oldest packets are deleted.</string>
     <string name="import_over_limit">⚠ This would exceed the storage limit: the %1$d oldest received packets would be deleted. Back up or free space first if you want to keep them.</string>
+    <string name="log_gps_restart">GPS stopped sending positions: requesting them again</string>
+    <string name="log_no_gps_node">No recent position from the phone or the node</string>
+    <string name="gps_node_none">Node GPS: no position received yet</string>
+    <string name="gps_node_line">Node GPS: %1$s · %2$d s ago</string>
 </resources>
