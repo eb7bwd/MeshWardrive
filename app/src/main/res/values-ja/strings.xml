@@ -189,7 +189,7 @@
     <string name="tut_settings">設定はテーマ別にまとまっています: Ping、測定（スマートPing、チャンネル混雑時の一時停止、ノードのGPS）、地図、接続、プライバシー、言語。オプション機能は初期状態でオフです。 各数値には説明が付いています。新機能: テーマ（夜間モード）、速度に応じたPing、Pingの良否の判定基準。</string>
     <string name="disclaimer_title">重要なお知らせ</string>
     <string name="disclaimer_text">MeshWardriveは、EB7BWDが作成し、ほぼすべてを人工知能が開発した実験的なアプリです。コードは監査されておらず、誤りを含む可能性があります。\n\n本アプリは「現状のまま」提供され、動作、データの正確性、特定目的への適合性を含め、明示・黙示を問わずいかなる保証もありません。\n\n使用することで、次の点に同意したものとみなされます。\n\n• すべて自己責任で使用すること。\n\n• 電波の利用、デューティサイクルと出力、個人情報保護、道路交通など、お住まいの国の法令を守る責任はあなたにあること。\n\n• Pingは共有ネットワークの送信時間を消費します。配慮した設定にし、メッシュを混雑させない責任はあなたにあること。\n\n• 運転中にスマートフォンを操作しないこと。\n\n• カバレッジマップは目安であり、緊急時や安全に関わる通信の判断に使用しないこと。\n\n法律で認められる最大限の範囲で、作者は本アプリに起因するいかなる損害、損失、罰則、データ消失、誤用についても責任を負いません。\n\n同意できない場合は使用しないでください。</string>
-    <string name="about_credits">企画・プロジェクト: EB7BWD\nコードはほぼすべてAI（AnthropicのClaude）で生成されています。\n\nGNU GPL v3（またはそれ以降）のフリーソフトウェアで、無保証です。\n\nMeshtasticおよびMeshMapperとは関係のない独立したプロジェクトです。Meshtastic®はMeshtastic LLCの登録商標です。\n\n地図 © OpenStreetMap contributors。osmdroid、AndroidX、Material Components、kotlinx.coroutines（Apache 2.0）およびMapsforge（LGPL v3）を使用しています。</string>
+    <string name="about_credits">企画・プロジェクト: EB7BWD\nコードはほぼすべてAI（AnthropicのClaude）で生成されています。\n\nGNU GPL v3（またはそれ以降）のフリーソフトウェアで、無保証です。\n\nMeshtasticおよびMeshMapperとは関係のない独立したプロジェクトです。Meshtastic®はMeshtastic LLCの登録商標です。\n\n地図 © OpenStreetMap contributors。osmdroid、AndroidX、Material Components、kotlinx.coroutines（Apache 2.0）およびMapsforge（LGPL v3）を使用しています。\n\n速度に応じたPingには、Tony Arnerich (KD7TA)氏とSteve Bragg (KA9MVA)氏がHamHUDプロジェクトのために考案したSmartBeaconing™アルゴリズムを使用しています。SmartBeaconingはHamHUD Nichetronixの商標です。本アプリは同社と関係ありません。\n\n地形: Terrain Tiles（AWS Open Data、SRTM・NED・ETOPO1などのデータ）。</string>
     <string name="seg_wardrives">ウォードライブ</string>
     <string name="seg_analysis">分析</string>
     <string name="wd_list_hint">ウォードライブをタップすると、それだけを表示、名前の変更、共有、削除ができます。</string>
@@ -425,8 +425,8 @@
     <string name="theme_light">ライト</string>
     <string name="theme_dark">ダーク（夜間）</string>
     <string name="help_theme">ダークでは地図も暗くなります。書き出す画像は明るいままです</string>
-    <string name="pref_sb">速度に応じたPing（SmartBeaconing）</string>
-    <string name="pref_sb_sum">APRSdroidのように、速いほど頻繁にPingして間隔を均等にし、曲がるときにも追加で送信。固定間隔の代わりに使います。15秒未満にはなりません。</string>
+    <string name="pref_sb">速度に応じたPing（SmartBeaconing™）</string>
+    <string name="pref_sb_sum">APRSdroidのように、速いほど頻繁にPingして間隔を均等にし、曲がるときにも追加で送信。固定間隔の代わりに使います。15秒未満にはなりません。 Tony Arnerich (KD7TA)氏とSteve Bragg (KA9MVA)氏（HamHUD）によるSmartBeaconing™アルゴリズム。</string>
     <string name="pref_sb_low">低速（km/h）</string>
     <string name="pref_sb_slow">低速時の間隔（秒）</string>
     <string name="pref_sb_high">高速（km/h）</string>

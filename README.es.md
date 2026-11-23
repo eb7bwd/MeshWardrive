@@ -116,7 +116,7 @@ Las funciones que cambian cuándo se envían los pings están en **Ajustes** y v
 | Opción | Dónde | Qué hace |
 |---|---|---|
 | Espera de la respuesta | Ajustes → Ping | Segundos que se espera a que alguien oiga el ping (**30** por defecto; antes 90). Si la respuesta llega cuando ya te has movido más de 75 m, el acierto se coloca donde llegó y no donde se envió, para que no aparezca una celda verde donde en realidad no había cobertura. |
-| Ping según la velocidad (SmartBeaconing) | Ajustes → Ping | Como en APRSdroid: parado o despacio pingea cada «intervalo lento» (120 s); por encima de la «velocidad alta» (90 km/h), cada «intervalo rápido» (15 s); entre medias, de forma proporcional, para que los pings queden repartidos por la ruta. Al girar más del ángulo indicado manda uno extra. Sustituye al intervalo fijo y nunca baja de 15 s. Desactivado por defecto. |
+| Ping según la velocidad (SmartBeaconing™) | Ajustes → Ping | Usa el algoritmo SmartBeaconing™ de Tony Arnerich (KD7TA) y Steve Bragg (KA9MVA), del proyecto HamHUD, el mismo que APRSdroid y muchas radios APRS: parado o despacio pingea cada «intervalo lento» (120 s); por encima de la «velocidad alta» (90 km/h), cada «intervalo rápido» (15 s); entre medias, de forma proporcional, para que los pings queden repartidos por la ruta. Al girar más del ángulo indicado manda uno extra. Sustituye al intervalo fijo y nunca baja de 15 s. Desactivado por defecto. |
 | Criterio para dar un ping por bueno o malo | Ajustes → Medición | **Ponderado** (por defecto) o **clásico**. Se explica en [Condiciones y criterio](#condiciones-del-wardrive-y-criterio-de-valoración). |
 | Preguntar las condiciones al empezar | Ajustes → Medición | **Activado** por defecto. Al pulsar Iniciar aparece una hoja corta con cómo llevas el nodo, ya rellena con lo de la última vez. Se puede marcar «No volver a preguntar». |
 | Modo solo escucha | Ajustes → Ping → Modo (o el botón de destino en **Conexión**) | No envía pings. Registra todo lo que oye tu nodo con tu posición. Útil para medir sin ocupar tiempo de aire. |
@@ -360,6 +360,7 @@ Software libre bajo la [GNU General Public License v3.0](LICENSE) o posterior. P
 - Código generado casi en su totalidad con IA (Claude, de Anthropic)
 - Mapas © colaboradores de OpenStreetMap
 - Relieve: Terrain Tiles (AWS Open Data; fuentes SRTM, NED, ETOPO1 y otras)
+- Ping según la velocidad: algoritmo SmartBeaconing™, creado por Tony Arnerich (KD7TA) y Steve Bragg (KA9MVA) para el proyecto HamHUD. SmartBeaconing es una marca de HamHUD Nichetronix.
 - osmdroid, AndroidX, Material Components y kotlinx.coroutines (Apache 2.0); Mapsforge (LGPL v3)
 
-Proyecto independiente, sin relación con Meshtastic ni con MeshMapper. Meshtastic® es una marca registrada de Meshtastic LLC.
+Proyecto independiente, sin relación con Meshtastic, MeshMapper ni HamHUD Nichetronix. Meshtastic® es una marca registrada de Meshtastic LLC. SmartBeaconing™ es una marca de HamHUD Nichetronix.

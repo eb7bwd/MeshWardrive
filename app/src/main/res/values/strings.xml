@@ -194,7 +194,7 @@
     <string name="tut_settings">Settings are grouped by topic: ping, measurement (smart ping, pause when the channel is busy, node GPS), map, connection, privacy and language. Optional features are off by default. Every number has a line explaining it. New: theme (night mode), ping by speed and the criterion for good or bad pings.</string>
     <string name="disclaimer_title">Important notice</string>
     <string name="disclaimer_text">MeshWardrive is an EXPERIMENTAL app created by EB7BWD and developed almost entirely by artificial intelligence. The code has not been audited and may contain errors.\n\nIt is provided “AS IS”, without warranty of any kind, express or implied, including warranties of operation, data accuracy or fitness for a particular purpose.\n\nBy using it you accept that:\n\n• You use it entirely at your own risk.\n\n• You are responsible for complying with the law in your country: radio spectrum use, duty cycle and power, data protection and traffic rules.\n\n• Every ping uses airtime on a shared network. It is your responsibility to configure it considerately and not flood the mesh.\n\n• You must not handle the phone while driving.\n\n• Coverage maps are indicative only and must not be relied on for emergency or safety communications.\n\nTo the maximum extent permitted by law, the author accepts no liability for any damage, loss, penalty, data loss or misuse arising from this app.\n\nIf you do not agree, do not use it.</string>
-    <string name="about_credits">Idea and project: EB7BWD\nCode generated almost entirely with AI (Claude, by Anthropic).\n\nFree software under the GNU GPL v3 (or later), with no warranty.\n\nIndependent project, not affiliated with Meshtastic or MeshMapper. Meshtastic® is a registered trademark of Meshtastic LLC.\n\nMaps © OpenStreetMap contributors. Uses osmdroid, AndroidX, Material Components and kotlinx.coroutines (Apache 2.0) and Mapsforge (LGPL v3).</string>
+    <string name="about_credits">Idea and project: EB7BWD\nCode generated almost entirely with AI (Claude, by Anthropic).\n\nFree software under the GNU GPL v3 (or later), with no warranty.\n\nIndependent project, not affiliated with Meshtastic or MeshMapper. Meshtastic® is a registered trademark of Meshtastic LLC.\n\nMaps © OpenStreetMap contributors. Uses osmdroid, AndroidX, Material Components and kotlinx.coroutines (Apache 2.0) and Mapsforge (LGPL v3).\n\nPing by speed uses the SmartBeaconing™ algorithm, invented by Tony Arnerich (KD7TA) and Steve Bragg (KA9MVA) for the HamHUD project. SmartBeaconing is a trademark of HamHUD Nichetronix; this app is not affiliated with them.\n\nRelief: Terrain Tiles (AWS Open Data; SRTM, NED, ETOPO1 and other sources).</string>
     <string name="seg_wardrives">Wardrives</string>
     <string name="seg_analysis">Analysis</string>
     <string name="wd_list_hint">Tap a wardrive to show only that one, rename it, share it or delete it.</string>
@@ -432,8 +432,8 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark (night)</string>
     <string name="help_theme">In dark, the map is darkened too; exported images stay light</string>
-    <string name="pref_sb">Ping by speed (SmartBeaconing)</string>
-    <string name="pref_sb_sum">Like APRSdroid: the faster you go, the more often it pings, so pings are evenly spaced; plus one extra when turning. Replaces the fixed interval; never below 15 s.</string>
+    <string name="pref_sb">Ping by speed (SmartBeaconing™)</string>
+    <string name="pref_sb_sum">Like APRSdroid: the faster you go, the more often it pings, so pings are evenly spaced; plus one extra when turning. Replaces the fixed interval; never below 15 s. SmartBeaconing™ algorithm by Tony Arnerich (KD7TA) and Steve Bragg (KA9MVA), HamHUD.</string>
     <string name="pref_sb_low">Low speed (km/h)</string>
     <string name="pref_sb_slow">Slow interval (s)</string>
     <string name="pref_sb_high">High speed (km/h)</string>

@@ -665,7 +665,7 @@ class WardriveService : Service(), MeshBle.Listener {
     }
 
     /**
-     * Intervalo según la velocidad, como el SmartBeaconing de APRS: lento por debajo de la
+     * Intervalo según la velocidad, algoritmo SmartBeaconing™ de Tony Arnerich (KD7TA) y Steve Bragg (KA9MVA), del proyecto HamHUD: lento por debajo de la
      * velocidad baja, rápido por encima de la alta y, entre medias, proporcional, para que la
      * distancia entre pings sea parecida. Nunca por debajo del mínimo de 15 s.
      */

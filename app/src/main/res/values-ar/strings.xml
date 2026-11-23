@@ -189,7 +189,7 @@
     <string name="tut_settings">الإعدادات مجمّعة حسب الموضوع: Ping، والقياس (Ping ذكي، إيقاف مؤقت عند ازدحام القناة، GPS العقدة)، والخريطة، والاتصال، والخصوصية، واللغة. الميزات الاختيارية معطّلة افتراضيًا. لكل رقم سطر يشرحه. الجديد: السمة (الوضع الليلي)، Ping حسب السرعة، ومعيار الحكم على الـ Ping.</string>
     <string name="disclaimer_title">تنبيه مهم</string>
     <string name="disclaimer_text">MeshWardrive تطبيق تجريبي أنشأه EB7BWD وطُوِّر بالكامل تقريبًا بواسطة الذكاء الاصطناعي. لم تُدقَّق الشيفرة وقد تحتوي على أخطاء.\n\nيُقدَّم «كما هو» دون أي ضمان من أي نوع، صريحًا كان أو ضمنيًا، بما في ذلك ضمان العمل أو دقة البيانات أو الملاءمة لغرض معيّن.\n\nباستخدامه فإنك توافق على ما يلي:\n\n• تستخدمه على مسؤوليتك الشخصية وحدك.\n\n• أنت مسؤول عن الالتزام بقوانين بلدك: استخدام الطيف الراديوي، ودورة التشغيل والقدرة، وحماية البيانات، وقواعد المرور.\n\n• كل Ping يشغل وقت بث على شبكة مشتركة. تقع على عاتقك مسؤولية ضبطه باعتدال وعدم إغراق الشبكة.\n\n• يجب ألا تستعمل الهاتف أثناء القيادة.\n\n• خرائط التغطية استرشادية فقط ولا يجوز الاعتماد عليها في اتصالات الطوارئ أو السلامة.\n\nإلى أقصى حد يسمح به القانون، لا يتحمل المؤلف أي مسؤولية عن أي ضرر أو خسارة أو غرامة أو فقدان بيانات أو سوء استخدام ناتج عن هذا التطبيق.\n\nإن لم توافق فلا تستخدمه.</string>
-    <string name="about_credits">الفكرة والمشروع: EB7BWD\nالشيفرة مولَّدة بالكامل تقريبًا بالذكاء الاصطناعي (Claude من Anthropic).\n\nبرنامج حر برخصة GNU GPL v3 (أو أحدث)، دون أي ضمان.\n\nمشروع مستقل لا علاقة له بـ Meshtastic ولا بـ MeshMapper. ‏Meshtastic® علامة تجارية مسجَّلة لشركة Meshtastic LLC.\n\nالخرائط © المساهمون في OpenStreetMap. يستخدم osmdroid وAndroidX وMaterial Components وkotlinx.coroutines (Apache 2.0) وMapsforge (LGPL v3).</string>
+    <string name="about_credits">الفكرة والمشروع: EB7BWD\nالشيفرة مولَّدة بالكامل تقريبًا بالذكاء الاصطناعي (Claude من Anthropic).\n\nبرنامج حر برخصة GNU GPL v3 (أو أحدث)، دون أي ضمان.\n\nمشروع مستقل لا علاقة له بـ Meshtastic ولا بـ MeshMapper. ‏Meshtastic® علامة تجارية مسجَّلة لشركة Meshtastic LLC.\n\nالخرائط © المساهمون في OpenStreetMap. يستخدم osmdroid وAndroidX وMaterial Components وkotlinx.coroutines (Apache 2.0) وMapsforge (LGPL v3).\n\nيستخدم الـ Ping حسب السرعة خوارزمية SmartBeaconing™ التي ابتكرها Tony Arnerich (KD7TA) وSteve Bragg (KA9MVA) لمشروع HamHUD. ‏SmartBeaconing علامة تجارية لـ HamHUD Nichetronix؛ ولا علاقة لهذا التطبيق بهم.\n\nالتضاريس: Terrain Tiles ‏(AWS Open Data؛ مصادر SRTM وNED وETOPO1 وغيرها).</string>
     <string name="seg_wardrives">الجولات</string>
     <string name="seg_analysis">التحليل</string>
     <string name="wd_list_hint">اضغط على جولة لعرضها وحدها أو إعادة تسميتها أو مشاركتها أو حذفها.</string>
@@ -425,8 +425,8 @@
     <string name="theme_light">فاتح</string>
     <string name="theme_dark">داكن (ليلي)</string>
     <string name="help_theme">في الداكن تُعتَّم الخريطة أيضًا؛ وتبقى الصور المصدّرة فاتحة</string>
-    <string name="pref_sb">Ping حسب السرعة (SmartBeaconing)</string>
-    <string name="pref_sb_sum">كما في APRSdroid: كلما أسرعت زاد تكرار الـ Ping لتتوزع بالتساوي؛ مع Ping إضافي عند الانعطاف. يحل محل الفاصل الثابت؛ ولا يقل عن 15 ث.</string>
+    <string name="pref_sb">Ping حسب السرعة (SmartBeaconing™)</string>
+    <string name="pref_sb_sum">كما في APRSdroid: كلما أسرعت زاد تكرار الـ Ping لتتوزع بالتساوي؛ مع Ping إضافي عند الانعطاف. يحل محل الفاصل الثابت؛ ولا يقل عن 15 ث. خوارزمية SmartBeaconing™ من Tony Arnerich (KD7TA) وSteve Bragg (KA9MVA)، HamHUD.</string>
     <string name="pref_sb_low">سرعة منخفضة (كم/س)</string>
     <string name="pref_sb_slow">الفاصل البطيء (ث)</string>
     <string name="pref_sb_high">سرعة عالية (كم/س)</string>

@@ -116,7 +116,7 @@ The features that change when pings are sent live in **Settings** and are **off*
 | Option | Where | What it does |
 |---|---|---|
 | Reply wait | Settings → Ping | Seconds to wait for someone to hear the ping (**30** by default; it used to be 90). If the reply arrives when you have already moved more than 75 m, the success is placed where it arrived, not where it was sent, so no green cell appears where there was really no coverage. |
-| Ping by speed (SmartBeaconing) | Settings → Ping | Like APRSdroid: stopped or slow it pings every «slow interval» (120 s); above the «high speed» (90 km/h), every «fast interval» (15 s); in between, proportionally, so pings are spread evenly along the route. Turning more than the set angle sends an extra one. Replaces the fixed interval and never goes below 15 s. Off by default. |
+| Ping by speed (SmartBeaconing™) | Settings → Ping | Uses the SmartBeaconing™ algorithm by Tony Arnerich (KD7TA) and Steve Bragg (KA9MVA), from the HamHUD project, the same one used by APRSdroid and many APRS radios: stopped or slow it pings every «slow interval» (120 s); above the «high speed» (90 km/h), every «fast interval» (15 s); in between, proportionally, so pings are spread evenly along the route. Turning more than the set angle sends an extra one. Replaces the fixed interval and never goes below 15 s. Off by default. |
 | Criterion for good or bad pings | Settings → Measurement | **Weighted** (default) or **classic**. Explained in [Conditions and criterion](#wardrive-conditions-and-valuation-criterion). |
 | Ask the conditions when starting | Settings → Measurement | **On** by default. Pressing Start shows a short sheet with how you carry the node, pre-filled with last time. You can tick «Don’t ask again». |
 | Listen-only mode | Settings → Ping → Mode (or the target button in **Connection**) | Sends no pings. Records everything your node hears, with your position. Useful for measuring without using airtime. |
@@ -358,6 +358,7 @@ Free software under the [GNU General Public License v3.0](LICENSE) or later. You
 - Code generated almost entirely with AI (Claude, by Anthropic)
 - Maps © OpenStreetMap contributors
 - Relief: Terrain Tiles (AWS Open Data; sources SRTM, NED, ETOPO1 and others)
+- Ping by speed: SmartBeaconing™ algorithm, invented by Tony Arnerich (KD7TA) and Steve Bragg (KA9MVA) for the HamHUD project. SmartBeaconing is a trademark of HamHUD Nichetronix.
 - osmdroid, AndroidX, Material Components and kotlinx.coroutines (Apache 2.0); Mapsforge (LGPL v3)
 
-Independent project, not affiliated with Meshtastic or MeshMapper. Meshtastic® is a registered trademark of Meshtastic LLC.
+Independent project, not affiliated with Meshtastic, MeshMapper or HamHUD Nichetronix. Meshtastic® is a registered trademark of Meshtastic LLC. SmartBeaconing™ is a trademark of HamHUD Nichetronix.
