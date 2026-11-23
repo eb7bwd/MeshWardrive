@@ -10,7 +10,6 @@ Android app for mapping the coverage of a **Meshtastic** network while you move 
 
 <p align="center">
   <img src="docs/screenshots/map.png" width="16%" alt="Heat map">
-  <img src="docs/screenshots/nodes.png" width="16%" alt="Nodes">
   <img src="docs/screenshots/connection.png" width="16%" alt="Connection">
   <img src="docs/screenshots/analysis.png" width="16%" alt="Data and analysis">
   <img src="docs/screenshots/log.png" width="16%" alt="Log">
