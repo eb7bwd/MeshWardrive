@@ -42,6 +42,7 @@ class CoverageRenderer(
         val nodes: Boolean,
         val route: Boolean,
         val gaps: Boolean,
+        val trends: Boolean = true,
     )
 
     class MapData(
@@ -56,6 +57,10 @@ class CoverageRenderer(
         val diff: List<CoverageGrid.DiffCell>?,
         /** Nodo destacado (cobertura de un repetidor). */
         val highlight: NodeEntry?,
+        /** Celdas evaluadas con el criterio elegido (para colores, cambios y fallos superados). */
+        val cells: Map<CoverageGrid.Key, CoverageGrid.Cell> = emptyMap(),
+        /** Fallos que ya no representan su celda: se dibujan apagados y no salen en el mapa de calor. */
+        val superseded: Set<Long> = emptySet(),
     )
 
     companion object {
@@ -98,11 +103,16 @@ class CoverageRenderer(
                 }
             }
             if (layers.heat) {
-                // Primero los fallos y encima los aciertos, para que un acierto no quede tapado
-                val pts = d.pings.filter { it.status.isFail }
-                    .map { HeatmapOverlay.HeatPoint(it.lat, it.lon, CoverageGrid.FAIL) } +
+                // Primero lo dudoso, luego los fallos que sí cuentan y encima los aciertos, para que
+                // un acierto no quede tapado. Los fallos superados (zona que ya tiene cobertura, o
+                // medidos en malas condiciones) no se pintan de rojo.
+                val unconfirmed = d.cells.values.filter { it.state == CoverageGrid.State.UNCONFIRMED }
+                    .map { HeatmapOverlay.HeatPoint(it.latC, it.lonC, CoverageGrid.UNCONFIRMED) }
+                val pts = unconfirmed +
+                    d.pings.filter { it.status.isFail && it.rowId !in d.superseded }
+                        .map { HeatmapOverlay.HeatPoint(it.lat, it.lon, CoverageGrid.FAIL) } +
                     d.pings.filter { it.status.isOk }
-                        .map { HeatmapOverlay.HeatPoint(it.lat, it.lon, CoverageGrid.pingColor(it)) }
+                        .map { HeatmapOverlay.HeatPoint(it.effLat, it.effLon, CoverageGrid.pingColor(it)) }
                 if (pts.isNotEmpty()) f.add(HeatmapOverlay(pts, d.cellSizeM.toFloat(), density))
             }
             if (layers.cells) {
@@ -110,11 +120,7 @@ class CoverageRenderer(
                     val col = CoverageGrid.cellColor(c)
                     f.add(cellPolygon(c, withAlpha(col, 0x70), withAlpha(col, 0xC0)).apply {
                         title = ctx.getString(R.string.cell_title)
-                        snippet = TextSafety.htmlText(
-                            ctx.getString(R.string.cell_snippet, c.count, c.ok, c.fail, c.successPct ?: 0) +
-                                (c.bestSnr?.let { "\n" + ctx.getString(R.string.best_snr, snr(it)) } ?: "") +
-                                (c.avgSnr?.let { "\n" + ctx.getString(R.string.avg_snr, snr(it)) } ?: "")
-                        )
+                        snippet = TextSafety.htmlText(CellInfo.describe(ctx, c, null, null))
                     })
                 }
             }
@@ -142,7 +148,12 @@ class CoverageRenderer(
         }
 
         if (diff == null && layers.pings && d.pings.isNotEmpty()) {
-            f.add(PingDotsOverlay(d.pings, density, onPingTap))
+            f.add(PingDotsOverlay(d.pings, density, d.superseded, onPingTap))
+        }
+
+        if (diff == null && layers.trends) {
+            val changed = d.cells.values.filter { it.trend != CoverageGrid.Trend.NONE }
+            if (changed.isNotEmpty()) f.add(TrendOverlay(changed, density))
         }
 
         if (layers.nodes || d.highlight != null) {
@@ -222,6 +233,10 @@ class CoverageRenderer(
         }
         p.errorReason?.let { append("\nError: ").append(RoutingError.name(it)) }
         p.latencyMs?.let { append("\n").append(ctx.getString(R.string.reply_in, String.format(Locale.US, "%.1f", it / 1000.0))) }
+        if (p.movedBeforeAck) {
+            append("\n").append(ctx.getString(R.string.ping_moved, p.ackDistM!!.toInt()))
+        }
+        if (p.status.notSent) append("\n").append(ctx.getString(R.string.ping_not_sent_help))
     }
 
     fun pingTitle(p: PingRow): String =

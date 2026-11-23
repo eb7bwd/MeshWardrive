@@ -10,4 +10,22 @@
         <item>direct</item>
         <item>listen</item>
     </string-array>
+    <string-array name="scoring_entries">
+        <item>@string/scoring_weighted</item>
+        <item>@string/scoring_classic</item>
+    </string-array>
+    <string-array name="scoring_values" translatable="false">
+        <item>weighted</item>
+        <item>classic</item>
+    </string-array>
+    <string-array name="theme_entries">
+        <item>@string/theme_system</item>
+        <item>@string/theme_light</item>
+        <item>@string/theme_dark</item>
+    </string-array>
+    <string-array name="theme_values" translatable="false">
+        <item>system</item>
+        <item>light</item>
+        <item>dark</item>
+    </string-array>
 </resources>

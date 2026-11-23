@@ -37,6 +37,13 @@ object PortNum {
 object RoutingError {
     const val NONE = 0
     const val MAX_RETRANSMIT = 5
+    const val DUTY_CYCLE_LIMIT = 9
+
+    /**
+     * Errores del propio nodo: el paquete no llegó a emitirse, así que no dice nada de la cobertura.
+     * NO_INTERFACE, NO_CHANNEL, TOO_LARGE, DUTY_CYCLE_LIMIT, RATE_LIMIT_EXCEEDED.
+     */
+    fun isLocal(e: Int) = e == 4 || e == 6 || e == 7 || e == 9 || e == 38
 
     fun name(e: Int): String = when (e) {
         0 -> "NONE"
@@ -118,7 +125,50 @@ class PositionMsg(
     /** Precisión en milímetros (gps_accuracy), 0 si no la trae. */
     val accuracyMm: Int = 0,
     val hdop: Int = 0,
-)
+    /** Bits de precisión con que se emitió (canal con precisión reducida); 0 = no lo indica, 32 = completa. */
+    val precisionBits: Int = 0,
+) {
+    /** Error que introduce la precisión reducida del canal, en metros; null si es completa o no se sabe. */
+    val precisionErrorM: Double?
+        get() = if (precisionBits in 1..31) 2_900.0 * Math.pow(2.0, (13 - precisionBits).toDouble()) else null
+}
+
+/** Roles de dispositivo (config.proto). */
+object DeviceRole {
+    const val CLIENT = 0
+    const val CLIENT_MUTE = 1
+    const val ROUTER = 2
+    const val ROUTER_CLIENT = 3
+    const val REPEATER = 4
+    const val TRACKER = 5
+    const val SENSOR = 6
+    const val TAK = 7
+    const val CLIENT_HIDDEN = 8
+    const val LOST_AND_FOUND = 9
+    const val TAK_TRACKER = 10
+    const val ROUTER_LATE = 11
+    const val CLIENT_BASE = 12
+
+    fun name(r: Int): String = when (r) {
+        CLIENT -> "CLIENT"
+        CLIENT_MUTE -> "CLIENT_MUTE"
+        ROUTER -> "ROUTER"
+        ROUTER_CLIENT -> "ROUTER_CLIENT"
+        REPEATER -> "REPEATER"
+        TRACKER -> "TRACKER"
+        SENSOR -> "SENSOR"
+        TAK -> "TAK"
+        CLIENT_HIDDEN -> "CLIENT_HIDDEN"
+        LOST_AND_FOUND -> "LOST_AND_FOUND"
+        TAK_TRACKER -> "TAK_TRACKER"
+        ROUTER_LATE -> "ROUTER_LATE"
+        CLIENT_BASE -> "CLIENT_BASE"
+        else -> "ROLE_$r"
+    }
+
+    /** Roles que retransmiten de todo: gastan su ciclo de trabajo en tráfico ajeno. */
+    fun isRepeater(r: Int) = r == ROUTER || r == ROUTER_CLIENT || r == REPEATER || r == ROUTER_LATE
+}
 
 class NodeInfoMsg(
     val num: Int,
@@ -144,6 +194,8 @@ sealed class FromRadio {
     class NodeInfo(val info: NodeInfoMsg) : FromRadio()
     class Channel(val channel: ChannelMsg) : FromRadio()
     class ConfigComplete(val id: Int) : FromRadio()
+    /** Parte de la configuración del nodo: solo nos interesan el rol y la potencia. */
+    class Config(val role: Int?, val txPowerDbm: Int?) : FromRadio()
     object Rebooted : FromRadio()
     object Other : FromRadio()
 }
@@ -192,6 +244,7 @@ object MeshProto {
                 2 -> r.len(w)?.let { result = FromRadio.Packet(decodeMeshPacket(it)) }
                 3 -> r.len(w)?.let { result = FromRadio.MyInfo(decodeMyInfo(it)) }
                 4 -> r.len(w)?.let { result = FromRadio.NodeInfo(decodeNodeInfo(it)) }
+                5 -> r.len(w)?.let { result = decodeConfig(it) }
                 7 -> result = FromRadio.ConfigComplete(r.vint(w).toInt())
                 8 -> { r.vint(w); result = FromRadio.Rebooted }
                 10 -> r.len(w)?.let { result = FromRadio.Channel(decodeChannel(it)) }
@@ -199,6 +252,31 @@ object MeshProto {
             }
         }
         return result
+    }
+
+    /** Config { device = 1 { role = 1 }, lora = 6 { tx_power = 10 } } */
+    fun decodeConfig(bytes: ByteArray): FromRadio {
+        val r = ProtoReader(bytes)
+        var role: Int? = null
+        var tx: Int? = null
+        r.forEachField { f, w ->
+            when (f) {
+                1 -> r.len(w)?.let { d ->
+                    val dr = ProtoReader(d)
+                    var v = 0
+                    dr.forEachField { ff, ww -> if (ff == 1) v = dr.vint(ww).toInt() else dr.skip(ww) }
+                    role = v
+                }
+                6 -> r.len(w)?.let { l ->
+                    val lr = ProtoReader(l)
+                    var v = 0
+                    lr.forEachField { ff, ww -> if (ff == 10) v = lr.vint(ww).toInt() else lr.skip(ww) }
+                    tx = v.takeIf { it in 1..33 }
+                }
+                else -> r.skip(w)
+            }
+        }
+        return if (role == null && tx == null) FromRadio.Other else FromRadio.Config(role, tx)
     }
 
     fun decodeMeshPacket(bytes: ByteArray): MeshPacket {
@@ -280,7 +358,7 @@ object MeshProto {
     fun decodePosition(bytes: ByteArray): PositionMsg {
         val r = ProtoReader(bytes)
         var latI: Int? = null; var lonI: Int? = null; var alt = 0
-        var time = 0; var accMm = 0; var hdop = 0
+        var time = 0; var accMm = 0; var hdop = 0; var prec = 0
         r.forEachField { f, w ->
             when (f) {
                 1 -> latI = r.fx32(w)          // sfixed32 latitude_i
@@ -289,12 +367,13 @@ object MeshProto {
                 4 -> time = r.fx32(w)          // fixed32 time
                 12 -> hdop = r.vint(w).toInt() // uint32 HDOP (en centésimas)
                 14 -> accMm = r.vint(w).toInt() // uint32 gps_accuracy (mm)
+                23 -> prec = r.vint(w).toInt()  // uint32 precision_bits
                 else -> r.skip(w)
             }
         }
         val lat = latI?.takeIf { it != 0 }?.let { it * 1e-7 }
         val lon = lonI?.takeIf { it != 0 }?.let { it * 1e-7 }
-        return PositionMsg(lat, lon, alt, time, accMm, hdop)
+        return PositionMsg(lat, lon, alt, time, accMm, hdop, prec)
     }
 
     /**

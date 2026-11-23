@@ -32,8 +32,7 @@
             app:iconSpaceReserved="false"
             app:key="interval_s"
             app:singleLineTitle="false"
-            app:title="@string/pref_interval"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_interval" />
         <EditTextPreference
             app:defaultValue="50"
             app:iconSpaceReserved="false"
@@ -46,27 +45,88 @@
             app:iconSpaceReserved="false"
             app:key="hop_limit"
             app:singleLineTitle="false"
-            app:title="@string/pref_hop"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_hop" />
         <EditTextPreference
-            app:defaultValue="90"
+            app:defaultValue="30"
             app:iconSpaceReserved="false"
             app:key="ack_timeout_s"
             app:singleLineTitle="false"
-            app:title="@string/pref_timeout"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_timeout" />
+        <SwitchPreferenceCompat
+            app:defaultValue="false"
+            app:iconSpaceReserved="false"
+            app:key="smart_beacon"
+            app:singleLineTitle="false"
+            app:summary="@string/pref_sb_sum"
+            app:title="@string/pref_sb" />
+        <EditTextPreference
+            app:defaultValue="5"
+            app:dependency="smart_beacon"
+            app:iconSpaceReserved="false"
+            app:key="sb_low_kmh"
+            app:singleLineTitle="false"
+            app:title="@string/pref_sb_low" />
+        <EditTextPreference
+            app:defaultValue="120"
+            app:dependency="smart_beacon"
+            app:iconSpaceReserved="false"
+            app:key="sb_slow_s"
+            app:singleLineTitle="false"
+            app:title="@string/pref_sb_slow" />
+        <EditTextPreference
+            app:defaultValue="90"
+            app:dependency="smart_beacon"
+            app:iconSpaceReserved="false"
+            app:key="sb_high_kmh"
+            app:singleLineTitle="false"
+            app:title="@string/pref_sb_high" />
+        <EditTextPreference
+            app:defaultValue="15"
+            app:dependency="smart_beacon"
+            app:iconSpaceReserved="false"
+            app:key="sb_fast_s"
+            app:singleLineTitle="false"
+            app:title="@string/pref_sb_fast" />
+        <EditTextPreference
+            app:defaultValue="25"
+            app:dependency="smart_beacon"
+            app:iconSpaceReserved="false"
+            app:key="sb_turn_min"
+            app:singleLineTitle="false"
+            app:title="@string/pref_sb_turn_min" />
+        <EditTextPreference
+            app:defaultValue="240"
+            app:dependency="smart_beacon"
+            app:iconSpaceReserved="false"
+            app:key="sb_turn_slope"
+            app:singleLineTitle="false"
+            app:title="@string/pref_sb_turn_slope" />
     </PreferenceCategory>
 
     <PreferenceCategory
         app:iconSpaceReserved="false"
         app:title="@string/pref_cat_measure">
+        <ListPreference
+            app:defaultValue="weighted"
+            app:entries="@array/scoring_entries"
+            app:entryValues="@array/scoring_values"
+            app:iconSpaceReserved="false"
+            app:key="scoring_mode"
+            app:singleLineTitle="false"
+            app:title="@string/pref_scoring" />
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:iconSpaceReserved="false"
+            app:key="ask_conditions"
+            app:singleLineTitle="false"
+            app:summary="@string/pref_ask_cond_sum"
+            app:title="@string/pref_ask_cond" />
         <EditTextPreference
             app:defaultValue="50"
             app:iconSpaceReserved="false"
             app:key="max_accuracy_m"
             app:singleLineTitle="false"
-            app:title="@string/pref_accuracy"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_accuracy" />
         <SwitchPreferenceCompat
             app:defaultValue="false"
             app:iconSpaceReserved="false"
@@ -94,8 +154,21 @@
             app:iconSpaceReserved="false"
             app:key="smart_min"
             app:singleLineTitle="false"
-            app:title="@string/pref_smart_min"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_smart_min" />
+        <EditTextPreference
+            app:defaultValue="3"
+            app:dependency="smart_ping"
+            app:iconSpaceReserved="false"
+            app:key="smart_fail_max"
+            app:singleLineTitle="false"
+            app:title="@string/pref_smart_fail" />
+        <EditTextPreference
+            app:defaultValue="0"
+            app:dependency="smart_ping"
+            app:iconSpaceReserved="false"
+            app:key="smart_min_dist_m"
+            app:singleLineTitle="false"
+            app:title="@string/pref_smart_dist" />
         <SwitchPreferenceCompat
             app:defaultValue="false"
             app:iconSpaceReserved="false"
@@ -109,8 +182,7 @@
             app:iconSpaceReserved="false"
             app:key="chutil_threshold"
             app:singleLineTitle="false"
-            app:title="@string/pref_chutil_threshold"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_chutil_threshold" />
     </PreferenceCategory>
 
     <PreferenceCategory
@@ -121,8 +193,15 @@
             app:iconSpaceReserved="false"
             app:key="cell_size_m"
             app:singleLineTitle="false"
-            app:title="@string/pref_cell"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_cell" />
+        <ListPreference
+            app:defaultValue="system"
+            app:entries="@array/theme_entries"
+            app:entryValues="@array/theme_values"
+            app:iconSpaceReserved="false"
+            app:key="theme"
+            app:singleLineTitle="false"
+            app:title="@string/pref_theme" />
     </PreferenceCategory>
 
     <PreferenceCategory
@@ -133,8 +212,7 @@
             app:iconSpaceReserved="false"
             app:key="reconnect_giveup_min"
             app:singleLineTitle="false"
-            app:title="@string/pref_reconnect"
-            app:useSimpleSummaryProvider="true" />
+            app:title="@string/pref_reconnect" />
     </PreferenceCategory>
 
     <PreferenceCategory

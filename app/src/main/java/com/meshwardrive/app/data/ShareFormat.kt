@@ -4,7 +4,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * Formato .mwd para compartir wardrives entre personas (JSON, versión 1).
+ * Formato .mwd para compartir wardrives entre personas (JSON, versión 2; también lee la 1).
  *
  * Un archivo recibido se trata siempre como no fiable: tamaño y número de registros limitados,
  * lectura JSON estricta, campos desconocidos rechazados, rangos comprobados y textos limpiados.
@@ -14,7 +14,7 @@ import java.util.Locale
 object ShareFormat {
 
     const val FORMAT = "meshwardrive"
-    const val VERSION = 1L
+    const val VERSION = 2L
     const val EXTENSION = "mwd"
     const val MIME = "application/json"
 
@@ -35,6 +35,7 @@ object ShareFormat {
         val pings: List<PingRow>,
         val rx: List<RxRow>,
         val track: List<TrackPoint>,
+        val conditions: Conditions? = null,
     )
 
     class Decoded(
@@ -62,6 +63,16 @@ object ShareFormat {
             w.key("id").str(wd.id)
             wd.name?.let { w.key("name").str(it) }
             w.key("created").num(wd.created)
+            wd.conditions?.let { c0 ->
+                val c = Conditions.sanitize(c0)
+                w.key("conditions").open('{')
+                c.txPowerDbm?.let { w.key("tx").num(it.toLong()) }
+                w.key("external").num(if (c.externalAntenna) 1 else 0)
+                w.key("gain").dec(c.antennaGainDbi.toDouble(), 1)
+                w.key("place").str(c.placement)
+                w.key("transport").str(c.transport)
+                w.close('}')
+            }
             w.key("pings").open('[')
             for (p in wd.pings) {
                 w.item().open('{')
@@ -87,6 +98,11 @@ object ShareFormat {
                 p.ackRssi?.let { w.key("ackRssi").num(it.toLong()) }
                 p.ackHops?.let { w.key("ackHops").num(it.toLong()) }
                 p.ackRelayNode?.let { w.key("ackRelayNode").num((it and 0xFF).toLong()) }
+                if (p.ackLat != null && p.ackLon != null) {
+                    w.key("ackLat").coord(p.ackLat!!)
+                    w.key("ackLon").coord(p.ackLon!!)
+                    p.ackDistM?.let { w.key("ackDist").dec(it.toDouble(), 1) }
+                }
                 w.close('}')
             }
             w.close(']')
@@ -118,6 +134,7 @@ object ShareFormat {
                 w.key("lat").coord(t.lat)
                 w.key("lon").coord(t.lon)
                 t.acc?.let { w.key("acc").dec(it.toDouble(), 1) }
+                t.alt?.let { w.key("alt").dec(it, 1) }
                 w.close('}')
             }
             w.close(']')
@@ -149,13 +166,13 @@ object ShareFormat {
                 fun far(lat: Double, lon: Double) =
                     Geo.distanceM(lat, lon, a.second, a.third) > TRIM_M &&
                         Geo.distanceM(lat, lon, b.second, b.third) > TRIM_M
-                pings = pings.filter { far(it.lat, it.lon) }
+                pings = pings.filter { far(it.lat, it.lon) && (it.ackLat == null || far(it.ackLat!!, it.ackLon!!)) }
                 rx = rx.filter { it.lat == null || it.lon == null || far(it.lat, it.lon) }
                 track = track.filter { far(it.lat, it.lon) }
             }
         }
         if (stripCoords) pings = pings.map { it.copy(text = it.text.split(' ').take(2).joinToString(" ")) }
-        return Wardrive(w.id, w.name, w.created, pings, rx, track)
+        return Wardrive(w.id, w.name, w.created, pings, rx, track, w.conditions)
     }
 
     /** Identificador local de un wardrive importado: estable, para no importarlo dos veces. */
@@ -233,6 +250,12 @@ object ShareFormat {
             return v
         }
 
+        fun map(k: String): Map<*, *>? {
+            val v = m[k] ?: return null
+            if (v !is Map<*, *>) throw Bad("'$k' must be an object")
+            return v
+        }
+
         fun list(k: String): List<*> {
             val v = m[k] ?: return emptyList<Any?>()
             if (v !is List<*>) throw Bad("'$k' must be a list")
@@ -241,17 +264,18 @@ object ShareFormat {
     }
 
     private val TOP_KEYS = setOf("format", "version", "exported", "sharedBy", "app", "wardrives")
-    private val WD_KEYS = setOf("id", "name", "created", "pings", "rx", "track")
+    private val WD_KEYS = setOf("id", "name", "created", "pings", "rx", "track", "conditions")
+    private val COND_KEYS = setOf("tx", "external", "gain", "place", "transport")
     private val PING_KEYS = setOf(
         "ts", "lat", "lon", "alt", "acc", "speed", "mode", "channel", "dest", "hopLimit", "text", "status",
         "error", "ackTs", "relayNode", "relaySnr", "relayRssi", "ackFrom", "ackSnr", "ackRssi", "ackHops",
-        "ackRelayNode",
+        "ackRelayNode", "ackLat", "ackLon", "ackDist",
     )
     private val RX_KEYS = setOf(
         "ts", "lat", "lon", "acc", "from", "to", "channel", "port", "snr", "rssi", "hopStart", "hopLimit",
         "relayNode",
     )
-    private val TRACK_KEYS = setOf("ts", "lat", "lon", "acc")
+    private val TRACK_KEYS = setOf("ts", "lat", "lon", "acc", "alt")
     private val MODES = setOf(MODE_CHANNEL, MODE_DIRECT, MODE_LISTEN)
 
     /** Lee y valida un archivo .mwd ya cargado en memoria. Lanza [ShareException] si no es aceptable. */
@@ -275,7 +299,7 @@ object ShareFormat {
         val list: List<*>
         try {
             if (top.str("format") != FORMAT) throw Bad("not a MeshWardrive file")
-            if (top.long("version", 1, Long.MAX_VALUE) != VERSION) throw Bad("unsupported version")
+            if (top.long("version", 1, Long.MAX_VALUE) > VERSION) throw Bad("unsupported version")
             exported = top.long("exported", MIN_TS, maxTs)
             sharedBy = TextSafety.clean(top.str("sharedBy"), 40) ?: "?"
             top.strOpt("app")
@@ -307,6 +331,7 @@ object ShareFormat {
             val pl: List<*>
             val rl: List<*>
             val tl: List<*>
+            val cond: Conditions?
             try {
                 origId = wd.str("id")
                 if (origId.isEmpty() || origId.length > 64) throw Bad("invalid wardrive id")
@@ -315,6 +340,7 @@ object ShareFormat {
                 pl = wd.list("pings")
                 rl = wd.list("rx")
                 tl = wd.list("track")
+                cond = parseConditions(wd.map("conditions"))
             } catch (e: Bad) {
                 throw ShareException(e.message ?: "invalid wardrive")
             }
@@ -343,7 +369,7 @@ object ShareFormat {
                 val t = runCatching { parseTrack(x, id, maxTs) }.getOrNull()
                 if (t == null) discarded++ else track.add(t)
             }
-            out.add(Wardrive(id, name, created, pings, rx, track))
+            out.add(Wardrive(id, name, created, pings, rx, track, cond))
         }
         // Algún registro raro se tolera; muchos indican un archivo manipulado o corrupto
         if (discarded > 0 && discarded * 10 > total) {
@@ -358,12 +384,32 @@ object ShareFormat {
         return Rec(x as Map<String, Any?>, keys)
     }
 
+    private fun parseConditions(x: Map<*, *>?): Conditions? {
+        if (x == null) return null
+        val r = map(x, COND_KEYS)
+        val place = r.str("place")
+        val transport = r.str("transport")
+        if (place !in Conditions.PLACES || transport !in Conditions.TRANSPORTS) throw Bad("bad conditions")
+        return Conditions.sanitize(
+            Conditions(
+                txPowerDbm = r.longOpt("tx", 0, 33)?.toInt(),
+                externalAntenna = r.long("external", 0, 1) == 1L,
+                antennaGainDbi = r.dbl("gain", -10.0, 15.0).toFloat(),
+                placement = place,
+                transport = transport,
+            )
+        )
+    }
+
     private fun parsePing(x: Any?, session: String, maxTs: Long): PingRow {
         val r = map(x, PING_KEYS)
         val ts = r.long("ts", MIN_TS, maxTs)
         val mode = r.str("mode")
         if (mode !in MODES) throw Bad("bad mode")
         val status = runCatching { PingStatus.valueOf(r.str("status")) }.getOrNull() ?: throw Bad("bad status")
+        val ackLat = r.dblOpt("ackLat", -90.0, 90.0)
+        val ackLon = r.dblOpt("ackLon", -180.0, 180.0)
+        if ((ackLat == null) != (ackLon == null)) throw Bad("incomplete position")
         return PingRow(
             packetId = 0,
             session = session,
@@ -390,6 +436,9 @@ object ShareFormat {
             ackRssi = r.longOpt("ackRssi", -200, 0)?.toInt(),
             ackHops = r.longOpt("ackHops", 0, 7)?.toInt(),
             ackRelayNode = r.longOpt("ackRelayNode", 0, 255)?.toInt(),
+            ackLat = ackLat,
+            ackLon = ackLon,
+            ackDistM = if (ackLat != null) r.dblOpt("ackDist", 0.0, 1_000_000.0)?.toFloat() else null,
         )
     }
 
@@ -425,6 +474,7 @@ object ShareFormat {
             lat = r.dbl("lat", -90.0, 90.0),
             lon = r.dbl("lon", -180.0, 180.0),
             acc = r.dblOpt("acc", 0.0, 100_000.0)?.toFloat(),
+            alt = r.dblOpt("alt", -1_000.0, 20_000.0),
         )
     }
 

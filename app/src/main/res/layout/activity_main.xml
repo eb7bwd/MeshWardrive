@@ -145,11 +145,15 @@
                 android:orientation="vertical"
                 android:padding="8dp">
 
-                <!-- Leyenda: se rellena desde el código según lo que muestre el mapa -->
+                <!-- Leyenda: se rellena desde el código; al tocarla explica cada color -->
                 <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/legendCard"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:contentDescription="@string/legend_help_title"
+                    android:focusable="true"
                     app:cardElevation="2dp">
 
                     <LinearLayout
@@ -335,6 +339,15 @@
                         app:icon="@drawable/ic_dropdown"
                         app:iconGravity="end" />
 
+                    <Button
+                        android:id="@+id/btnDates"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textAlignment="viewStart"
+                        app:icon="@drawable/ic_dropdown"
+                        app:iconGravity="end" />
+
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -405,10 +418,22 @@
                     android:paddingHorizontal="16dp"
                     android:paddingBottom="24dp">
 
-                    <TextView
+                    <Button
+                        android:id="@+id/btnCoverage"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
+                        android:text="@string/coverage_open" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/coverage_open_hint"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
                         android:text="@string/summary_title"
                         android:textAppearance="?attr/textAppearanceTitleMedium" />
                     <TextView

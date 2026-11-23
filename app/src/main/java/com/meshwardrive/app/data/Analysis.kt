@@ -182,7 +182,10 @@ object Analysis {
      * Resumen de los wardrives elegidos. La distancia sale de la ruta guardada; si un wardrive
      * no tiene ruta (versiones anteriores), de las posiciones de sus pings y recepciones.
      */
-    fun report(pings: List<PingRow>, rx: List<RxRow>, track: List<TrackPoint>, cellSizeM: Int): Report {
+    fun report(
+        pings: List<PingRow>, rx: List<RxRow>, track: List<TrackPoint>, cellSizeM: Int,
+        sc: Scoring.Context = Scoring.Context.CLASSIC_DEFAULT,
+    ): Report {
         val bySession = HashMap<String, ArrayList<Triple<Long, Double, Double>>>()
         val withTrack = track.map { it.session }.toSet()
         track.forEach { bySession.getOrPut(it.session) { ArrayList() }.add(Triple(it.ts, it.lat, it.lon)) }
@@ -210,8 +213,8 @@ object Analysis {
         }
         // Las sesiones sin posiciones cuentan su duración por los tiempos de sus registros
         val sessions = sessions(pings, rx, track)
-        val cells = CoverageGrid.pingCells(pings, cellSizeM)
-        val answered = cells.filter { it.ok > 0 }
+        val cells = CoverageGrid.pingCells(pings, cellSizeM, sc)
+        val answered = cells.filter { it.state == CoverageGrid.State.COVERED }
         return Report(
             wardrives = sessions.size,
             distanceM = dist,
@@ -220,11 +223,11 @@ object Analysis {
             answered = pings.count { it.status.isOk },
             failed = pings.count { it.status.isFail },
             rxPackets = rx.size,
-            cells = cells.count { it.ok + it.fail > 0 },
+            cells = cells.count { it.state == CoverageGrid.State.COVERED || it.state == CoverageGrid.State.NO_COVERAGE },
             coveredCells = answered.size,
             bestSnr = answered.mapNotNull { it.bestSnr }.maxOrNull(),
             best = answered.filter { it.bestSnr != null }.maxByOrNull { it.bestSnr!! } ?: answered.firstOrNull(),
-            worst = cells.filter { it.ok == 0 && it.fail > 0 }.maxByOrNull { it.fail }
+            worst = cells.filter { it.state == CoverageGrid.State.NO_COVERAGE }.maxByOrNull { it.fail }
                 ?: answered.filter { it.bestSnr != null }.minByOrNull { it.bestSnr!! },
         )
     }

@@ -77,6 +77,10 @@ import com.meshwardrive.app.data.WardriveDb
 import com.meshwardrive.app.data.WardriveState
 import com.meshwardrive.app.data.WardriveState.Conn
 import com.meshwardrive.app.data.labelRes
+import com.meshwardrive.app.data.placementLabelRes
+import com.meshwardrive.app.data.Scoring
+import com.meshwardrive.app.proto.DeviceRole
+import com.google.android.material.snackbar.Snackbar
 import com.meshwardrive.app.service.WardriveService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -177,12 +181,12 @@ class MainActivity : AppCompatActivity() {
     private val exportCellsLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/geo+json")) { uri ->
             val size = settings.cellSizeM
-            uri?.let { u -> export(u) { out, pings, rx, _, _ -> CoverageExport.cellsGeoJson(out, pings, rx, size) } }
+            uri?.let { u -> export(u) { out, pings, rx, _, _ -> CoverageExport.cellsGeoJson(out, pings, rx, size, scoringContext()) } }
         }
     private val exportKmlLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { uri ->
             val size = settings.cellSizeM
-            uri?.let { u -> export(u) { out, pings, rx, nodes, _ -> CoverageExport.kml(out, pings, rx, nodes, size) } }
+            uri?.let { u -> export(u) { out, pings, rx, nodes, _ -> CoverageExport.kml(out, pings, rx, nodes, size, scoringContext()) } }
         }
     private val exportImageLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
@@ -200,6 +204,8 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------ ciclo de vida
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Tema (sistema, claro u oscuro) antes de crear la vista
+        MapTheme.applyNightMode(Settings(this).theme)
         super.onCreate(savedInstanceState)
 
         // osmdroid: user agent propio y caché dentro de la app (no hace falta permiso de almacenamiento)
@@ -216,6 +222,8 @@ class MainActivity : AppCompatActivity() {
         db = WardriveDb.get(this)
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(prefSync)
         sessionFilter = settings.sessionFilter
+        dateFromCache = settings.dateFrom
+        dateToCache = settings.dateTo
 
         tvConn = findViewById(R.id.tvConn)
         tvGps = findViewById(R.id.tvGps)
@@ -242,11 +250,15 @@ class MainActivity : AppCompatActivity() {
         setupDataTabs()
         setupMap()
         updateSessionsButton()
+        lifecycleScope.launch {
+            meta = withContext(Dispatchers.IO) { db.sessionMeta() }
+            updateSessionsButton()
+        }
 
         btnConnect.setOnClickListener { onConnectClicked() }
         btnRun.setOnClickListener {
-            val action = if (WardriveState.running.value) WardriveService.ACTION_STOP else WardriveService.ACTION_START
-            WardriveService.send(this, action)
+            if (WardriveState.running.value) WardriveService.send(this, WardriveService.ACTION_STOP)
+            else startWithConditions()
         }
         btnPing.setOnClickListener { WardriveService.send(this, WardriveService.ACTION_PING) }
         findViewById<FloatingActionButton>(R.id.fabCenter).setOnClickListener { centerOnMe() }
@@ -255,6 +267,9 @@ class MainActivity : AppCompatActivity() {
         click(R.id.btnLayers) { showLayersDialog() }
         click(R.id.btnTarget) { showTargetDialog() }
         click(R.id.btnSessions) { showSessionsFilterDialog() }
+        click(R.id.btnDates) { showDateFilterDialog() }
+        click(R.id.btnCoverage) { openCoverage() }
+        click(R.id.legendCard) { showLegendHelp() }
         click(R.id.btnSession) { showChartSessionDialog() }
         click(R.id.btnShare) { pickWardrivesToShare() }
         click(R.id.btnImport) { importShareLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
@@ -334,6 +349,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        commitPendingDeletion()
         map.onPause()
         super.onPause()
     }
@@ -341,6 +357,8 @@ class MainActivity : AppCompatActivity() {
     // El modo se puede cambiar en Ajustes o en Conexión: la pestaña Conexión se refresca en ambos casos
     private val prefSync = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "mode" || key == "target_node") runOnUiThread { updateStatus() }
+        if (key == "theme") runOnUiThread { MapTheme.applyNightMode(settings.theme) }
+        if (key == "scoring_mode" || key == "cell_size_m") runOnUiThread { refreshMap() }
     }
 
     override fun onDestroy() {
@@ -411,11 +429,11 @@ class MainActivity : AppCompatActivity() {
         val names = arrayOf(
             getString(R.string.layer_heat), getString(R.string.layer_cells), getString(R.string.layer_pings),
             getString(R.string.passive_rx), getString(R.string.layer_nodes), getString(R.string.layer_route),
-            getString(R.string.layer_gaps),
+            getString(R.string.layer_gaps), getString(R.string.layer_trends),
         )
         val checked = booleanArrayOf(
             settings.showHeat, settings.showCells, settings.showPings, settings.showPassive, settings.showNodes,
-            settings.showRoute, settings.showGaps,
+            settings.showRoute, settings.showGaps, settings.showTrends,
         )
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.layers_title)
@@ -428,10 +446,12 @@ class MainActivity : AppCompatActivity() {
                     4 -> settings.showNodes = on
                     5 -> settings.showRoute = on
                     6 -> settings.showGaps = on
+                    7 -> settings.showTrends = on
                 }
                 refreshMap()
             }
             .setPositiveButton(R.string.close, null)
+            .setNeutralButton(R.string.coverage_open) { _, _ -> openCoverage() }
             .show()
     }
 
@@ -508,6 +528,10 @@ class MainActivity : AppCompatActivity() {
                 val sub = buildString {
                     sessionDate(id)?.let { append(it).append(" · ") }
                     append(getString(R.string.wd_counts, list.pings[id] ?: 0, list.rx[id] ?: 0))
+                    list.meta[id]?.conditions?.let { c ->
+                        append(" · ").append(getString(placementLabelRes(c.placement)))
+                        append(" · ").append(getString(c.difficulty.labelRes))
+                    }
                 }
                 val text = SpannableString("$title\n$sub")
                 text.setSpan(
@@ -527,7 +551,7 @@ class MainActivity : AppCompatActivity() {
     private fun showWardriveActions(id: String) {
         val items = arrayOf(
             getString(R.string.wd_show_only), getString(R.string.wd_rename),
-            getString(R.string.wd_share), getString(R.string.delete),
+            getString(R.string.wd_share), getString(R.string.wd_conditions), getString(R.string.delete),
         )
         MaterialAlertDialogBuilder(this)
             .setTitle(sessionLabel(id))
@@ -539,10 +563,39 @@ class MainActivity : AppCompatActivity() {
                     }
                     1 -> renameWardrive(id)
                     2 -> shareWardrives(listOf(id))
-                    3 -> confirmDeleteWardrive(id)
+                    3 -> editConditions(id)
+                    4 -> confirmDeleteWardrive(id)
                 }
             }
             .show()
+    }
+
+    /** Corregir después las condiciones con que se hizo un wardrive. */
+    private fun editConditions(id: String) {
+        val initial = meta[id]?.conditions ?: settings.conditions
+        ConditionsDialog.show(this, initial, WardriveState.nodeTxPower.value, startMode = false) { c, _ ->
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    db.setConditions(id, c)
+                    meta = db.sessionMeta()
+                }
+                refreshWardrives()
+                refreshMap()
+            }
+        }
+    }
+
+    /** Al pulsar Iniciar: hoja de condiciones (si no se ha pedido no volver a preguntar) y en marcha. */
+    private fun startWithConditions() {
+        if (!settings.askConditions) {
+            WardriveService.send(this, WardriveService.ACTION_START)
+            return
+        }
+        ConditionsDialog.show(this, settings.conditions, WardriveState.nodeTxPower.value, startMode = true) { c, dontAsk ->
+            settings.conditions = c
+            if (dontAsk) settings.askConditions = false
+            WardriveService.send(this, WardriveService.ACTION_START)
+        }
     }
 
     private fun renameWardrive(id: String) {
@@ -656,7 +709,7 @@ class MainActivity : AppCompatActivity() {
                         val created = m[id]?.created?.takeIf { it > 0 }
                             ?: listOfNotNull(p.minOfOrNull { it.ts }, r.minOfOrNull { it.ts }, t.minOfOrNull { it.ts }).minOrNull()
                             ?: System.currentTimeMillis()
-                        ShareFormat.prepare(ShareFormat.Wardrive(id, m[id]?.name, created, p, r, t), trim, strip)
+                        ShareFormat.prepare(ShareFormat.Wardrive(id, m[id]?.name, created, p, r, t, m[id]?.conditions), trim, strip)
                     }
                     val sharedBy = settings.shareName ?: WardriveState.conn.value.myName ?: getString(R.string.app_name)
                     val text = ShareFormat.encode(sharedBy, System.currentTimeMillis(), wardrives)
@@ -897,6 +950,7 @@ class MainActivity : AppCompatActivity() {
                     db.allRx(onlyWithFix = false).filter { sessionVisible(it.session) },
                     db.allTrack().filter { sessionVisible(it.session) },
                     settings.cellSizeM,
+                    scoringContext(),
                 )
             }
             if (rep.wardrives == 0) return@launch toast(getString(R.string.chart_empty))
@@ -1019,6 +1073,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun clearMapFilters() {
+        if (relayFilter == null && compareSets == null && (dateFromCache > 0 || dateToCache > 0)) {
+            applyDateFilter(0L, 0L)
+            return
+        }
         relayFilter = null
         compareSets = null
         refreshMap()
@@ -1075,6 +1133,7 @@ class MainActivity : AppCompatActivity() {
             Triple(1, R.string.tab_conn, R.string.tut_conn),
             Triple(0, R.string.tab_map, R.string.tut_map),
             Triple(2, R.string.tab_data, R.string.tut_data),
+            Triple(2, R.string.coverage_title, R.string.tut_coverage),
             Triple(3, R.string.tab_log, R.string.tut_log),
             Triple(4, R.string.tab_settings, R.string.tut_settings),
         )
@@ -1144,10 +1203,14 @@ class MainActivity : AppCompatActivity() {
                 return false
             }
 
-            override fun longPressHelper(p: GeoPoint?): Boolean = false
+            override fun longPressHelper(p: GeoPoint?): Boolean {
+                if (p != null) onMapLongPress(p)
+                return p != null
+            }
         }))
-        renderer = CoverageRenderer(map) { p -> showTextDialog(renderer.pingTitle(p), renderer.describePing(p)) }
+        renderer = CoverageRenderer(map) { p -> showPingDialog(p) }
         applyMapSource()
+        MapTheme.applyToMap(map)
     }
 
     private fun toggleStatusCard() {
@@ -1166,12 +1229,17 @@ class MainActivity : AppCompatActivity() {
             CoverageRenderer.WORSE to "▼ " + getString(R.string.cmp_worse),
             CoverageRenderer.SAME to getString(R.string.cmp_same),
             CoverageRenderer.NEW to getString(R.string.cmp_new),
-        ) else listOf(
-            CoverageGrid.GOOD to "≥ −7",
-            CoverageGrid.MARGINAL to "−7…−13",
-            CoverageGrid.WEAK to "< −13 dB",
-            CoverageGrid.FAIL to "✗",
-        )
+        ) else buildList {
+            add(CoverageGrid.GOOD to "≥ −7")
+            add(CoverageGrid.MARGINAL to "−7…−13")
+            add(CoverageGrid.WEAK to "< −13 dB")
+            add(CoverageGrid.FAIL to "✗")
+            if (settings.scoringMode == Scoring.WEIGHTED) add(CoverageGrid.UNCONFIRMED to "?")
+            if (settings.showTrends) {
+                add(CoverageGrid.TREND_NEW to "▲")
+                add(CoverageGrid.TREND_LOST to "▼")
+            }
+        }
         val gap = (8 * resources.displayMetrics.density).toInt()
         for ((color, label) in items) {
             val s = SpannableString("● $label")
@@ -1182,6 +1250,11 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, 0, gap, 0)
             })
         }
+        // ⓘ: al tocar la leyenda se explica qué significa cada color y marca
+        box.addView(TextView(this).apply {
+            text = "ⓘ"
+            textSize = 13f
+        })
     }
 
     private fun updateFilterBanner(rangeM: Double?) {
@@ -1199,6 +1272,10 @@ class MainActivity : AppCompatActivity() {
                 val range = rangeM?.let { String.format(Locale.getDefault(), "%.1f km", it / 1000.0) }
                     ?: getString(R.string.relay_range_unknown)
                 tv.text = getString(R.string.relay_filter_banner, relay.label, range)
+            }
+            dateFromCache > 0 || dateToCache > 0 -> {
+                card.visibility = View.VISIBLE
+                tv.text = getString(R.string.dates_btn, dateLabel())
             }
             else -> card.visibility = View.GONE
         }
@@ -1328,7 +1405,8 @@ class MainActivity : AppCompatActivity() {
         if (map.width == 0 || map.height == 0) return null
         val bmp = Bitmap.createBitmap(map.width, map.height, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        map.draw(c)
+        // La imagen se genera siempre en claro, aunque el mapa esté en modo nocturno
+        MapTheme.withLightMap(map) { map.draw(c) }
 
         val d = resources.displayMetrics.density
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 12f * d }
@@ -1453,7 +1531,9 @@ class MainActivity : AppCompatActivity() {
             nodes = settings.showNodes,
             route = settings.showRoute,
             gaps = settings.showGaps,
+            trends = settings.showTrends,
         )
+        val hidden = pendingDeletion
         val relay = relayFilter
         val cmp = compareSets
         val center = map.mapCenter
@@ -1461,16 +1541,19 @@ class MainActivity : AppCompatActivity() {
         val cLon = center.longitude
         lifecycleScope.launch {
             val out = withContext(Dispatchers.IO) {
-                val allPings = db.allPings()
+                meta = db.sessionMeta()
+                val sc = scoringContext()
+                val allPings = db.allPings().let { l -> if (hidden == null) l else l.filter { it.rowId !in hidden.pings } }
                 val nodes = db.allNodes()
                 var pings = allPings.filter { sessionVisible(it.session) }
                 var rx = db.allRx(onlyWithFix = true).filter { sessionVisible(it.session) }
+                    .let { l -> if (hidden == null) l else l.filter { it.rowId !in hidden.rx } }
                 var track = if (layers.route) db.allTrack().filter { sessionVisible(it.session) } else emptyList()
                 var diff: List<CoverageGrid.DiffCell>? = null
                 var rangeM: Double? = null
                 if (cmp != null) {
                     diff = CoverageGrid.diffCells(
-                        allPings.filter { it.session in cmp.first }, allPings.filter { it.session in cmp.second }, cell,
+                        allPings.filter { it.session in cmp.first }, allPings.filter { it.session in cmp.second }, cell, sc,
                     )
                     track = emptyList()
                 } else if (relay != null) {
@@ -1488,16 +1571,19 @@ class MainActivity : AppCompatActivity() {
                         rangeM = d.maxOrNull()
                     }
                 }
+                val cellIdx = CoverageGrid.index(pings, cell, sc)
                 val data = CoverageRenderer.MapData(
                     cellSizeM = cell,
                     pings = pings,
                     nodes = nodes,
                     track = track,
-                    pingCells = if (layers.cells) CoverageGrid.pingCells(pings, cell) else emptyList(),
+                    pingCells = if (layers.cells) cellIdx.values.toList() else emptyList(),
                     rxCells = if (layers.passive) CoverageGrid.rxCells(rx, cell) else emptyList(),
                     gaps = if (layers.gaps && diff == null) CoverageGrid.gapCells(pings, cell, cLat, cLon) else emptyList(),
                     diff = diff,
                     highlight = relay?.node,
+                    cells = cellIdx,
+                    superseded = CoverageGrid.supersededFails(pings, cellIdx, cell, sc),
                 )
                 Triple(data, statsOf(pings, rx.size), rangeM)
             }
@@ -1508,12 +1594,238 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ------------------------------------------------------------ valoración y borrado
+
+    /** Criterio de valoración elegido, con las condiciones de cada wardrive. */
+    private fun scoringContext(): Scoring.Context = Scoring.context(settings.scoringMode, meta)
+
+    /** Mediciones marcadas para borrar: desaparecen ya, pero se pueden recuperar unos segundos. */
+    private class Deletion(val pings: Set<Long>, val rx: Set<Long>)
+
+    private var pendingDeletion: Deletion? = null
+    private var zoneStart: GeoPoint? = null
+
+    private fun showPingDialog(p: PingRow) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(renderer.pingTitle(p))
+            .setMessage(renderer.describePing(p))
+            .setPositiveButton(R.string.close, null)
+            .setNeutralButton(R.string.del_this) { _, _ -> scheduleDeletion(Deletion(setOf(p.rowId), emptySet())) }
+            .show()
+    }
+
+    /**
+     * Mantener pulsado en el mapa: ficha de la celda, borrar sus mediciones o borrar una zona
+     * (la segunda pulsación larga marca la esquina opuesta).
+     */
+    private fun onMapLongPress(g: GeoPoint) {
+        val start = zoneStart
+        if (start != null) {
+            zoneStart = null
+            confirmZoneDeletion(start, g)
+            return
+        }
+        val size = settings.cellSizeM.toDouble()
+        val key = CoverageGrid.keyOf(g.latitude, g.longitude, size)
+        val hidden = pendingDeletion
+        lifecycleScope.launch {
+            val found = withContext(Dispatchers.IO) {
+                val sc = scoringContext()
+                val pings = db.allPings().filter {
+                    sessionVisible(it.session) && (hidden == null || it.rowId !in hidden.pings) &&
+                        (CoverageGrid.keyOfPing(it, size) == key || CoverageGrid.keyOf(it.lat, it.lon, size) == key)
+                }
+                val rx = db.allRx(onlyWithFix = true).filter {
+                    sessionVisible(it.session) && (hidden == null || it.rowId !in hidden.rx) &&
+                        CoverageGrid.keyOf(it.lat!!, it.lon!!, size) == key
+                }
+                val cell = CoverageGrid.index(pings, settings.cellSizeM, sc)[key]
+                val heard = rx.filter { it.hops == 0 }.map { it.from }.distinct().map { WardriveState.nodeLabel(it) }
+                Triple(pings, rx, CellInfo.describe(this@MainActivity, cell, null, heard))
+            }
+            val (pings, rx, info) = found
+            val items = arrayOf(
+                getString(R.string.del_cell, pings.size, rx.size),
+                getString(R.string.del_zone_start),
+            )
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.cell_title)
+                .setMessage(info)
+                .setPositiveButton(R.string.close, null)
+                .setNeutralButton(R.string.del_menu) { _, _ ->
+                    MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle(R.string.del_menu)
+                        .setItems(items) { _, which ->
+                            when (which) {
+                                0 -> if (pings.isEmpty() && rx.isEmpty()) toast(getString(R.string.del_nothing))
+                                else scheduleDeletion(Deletion(pings.map { it.rowId }.toSet(), rx.map { it.rowId }.toSet()))
+                                1 -> {
+                                    zoneStart = g
+                                    toast(getString(R.string.del_zone_next))
+                                }
+                            }
+                        }
+                        .show()
+                }
+                .show()
+        }
+    }
+
+    private fun confirmZoneDeletion(a: GeoPoint, b: GeoPoint) {
+        val s = minOf(a.latitude, b.latitude)
+        val n = maxOf(a.latitude, b.latitude)
+        val w = minOf(a.longitude, b.longitude)
+        val e = maxOf(a.longitude, b.longitude)
+        fun inside(lat: Double, lon: Double) = lat in s..n && lon in w..e
+        val hidden = pendingDeletion
+        lifecycleScope.launch {
+            val (pings, rx) = withContext(Dispatchers.IO) {
+                db.allPings().filter {
+                    sessionVisible(it.session) && (hidden == null || it.rowId !in hidden.pings) &&
+                        (inside(it.lat, it.lon) || inside(it.effLat, it.effLon))
+                } to db.allRx(onlyWithFix = true).filter {
+                    sessionVisible(it.session) && (hidden == null || it.rowId !in hidden.rx) && inside(it.lat!!, it.lon!!)
+                }
+            }
+            if (pings.isEmpty() && rx.isEmpty()) return@launch toast(getString(R.string.del_nothing))
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(R.string.del_zone_title)
+                .setMessage(getString(R.string.del_zone_msg, pings.size, rx.size))
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.delete) { _, _ ->
+                    scheduleDeletion(Deletion(pings.map { it.rowId }.toSet(), rx.map { it.rowId }.toSet()))
+                }
+                .show()
+        }
+    }
+
+    /** Oculta lo marcado y ofrece deshacer; se borra de verdad al cerrarse el aviso. */
+    private fun scheduleDeletion(d: Deletion) {
+        commitPendingDeletion()
+        pendingDeletion = d
+        refreshMap()
+        val bar = Snackbar.make(
+            findViewById(R.id.map), getString(R.string.del_done, d.pings.size, d.rx.size), 6_000,
+        )
+        bar.setAction(R.string.undo) {
+            if (pendingDeletion === d) {
+                pendingDeletion = null
+                refreshMap()
+            }
+        }
+        bar.addCallback(object : Snackbar.Callback() {
+            override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                if (event != DISMISS_EVENT_ACTION && pendingDeletion === d) commitPendingDeletion()
+            }
+        })
+        bar.show()
+    }
+
+    private fun commitPendingDeletion() {
+        val d = pendingDeletion ?: return
+        pendingDeletion = null
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { runCatching { db.deleteMeasurements(d.pings, d.rx) } }
+            WardriveState.stats.value = withContext(Dispatchers.IO) { db.stats() }
+            refreshMap()
+            if (pager.currentItem == 2) refreshDataPanel()
+        }
+    }
+
+    private fun openCoverage() {
+        startActivity(Intent(this, CoverageActivity::class.java))
+    }
+
+    private fun showLegendHelp() {
+        showTextDialog(getString(R.string.legend_help_title), getString(R.string.legend_help_text))
+    }
+
     // ------------------------------------------------------------ filtro de wardrives
 
-    /** Un wardrive se ve si no hay filtro, si está elegido o si es el que está en marcha. */
+    /**
+     * Un wardrive se ve si pasa los dos filtros (los elegidos y las fechas) o si es el que está en
+     * marcha. Las fechas cuentan desde el inicio de cada wardrive.
+     */
     private fun sessionVisible(id: String): Boolean {
-        val f = sessionFilter ?: return true
-        return id in f || (WardriveState.running.value && id == WardriveState.session.value)
+        if (WardriveState.running.value && id == WardriveState.session.value) return true
+        val f = sessionFilter
+        if (f != null && id !in f) return false
+        val from = dateFromCache
+        val to = dateToCache
+        if (from > 0 || to > 0) {
+            val start = sessionStart(id)
+            if (start > 0) {
+                if (from > 0 && start < from) return false
+                if (to > 0 && start >= to) return false
+            }
+        }
+        return true
+    }
+
+    private var dateFromCache = 0L
+    private var dateToCache = 0L
+
+    /** Inicio de un wardrive: por su identificador (fecha y hora) o, si es importado, por su fecha guardada. */
+    private fun sessionStart(id: String): Long =
+        runCatching { SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).parse(id)!!.time }.getOrNull()
+            ?: meta[id]?.created ?: 0L
+
+    private fun dateLabel(): String {
+        val df = java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT)
+        val from = dateFromCache
+        val to = dateToCache
+        return when {
+            from > 0 && to > 0 -> getString(R.string.dates_between, df.format(Date(from)), df.format(Date(to - 1)))
+            to > 0 -> getString(R.string.dates_until, df.format(Date(to - 1)))
+            from > 0 -> getString(R.string.dates_from, df.format(Date(from)))
+            else -> getString(R.string.dates_all)
+        }
+    }
+
+    /** Filtro por fechas: todas, hasta una fecha o entre dos fechas (ambas incluidas). */
+    private fun showDateFilterDialog() {
+        val items = arrayOf(getString(R.string.dates_all), getString(R.string.dates_pick_until), getString(R.string.dates_pick_between))
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.dates_title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> applyDateFilter(0L, 0L)
+                    1 -> pickDate(R.string.dates_pick_until) { end -> applyDateFilter(0L, end + 86_400_000L) }
+                    2 -> pickDate(R.string.dates_pick_start) { start ->
+                        pickDate(R.string.dates_pick_end) { end ->
+                            val a = minOf(start, end)
+                            val b = maxOf(start, end)
+                            applyDateFilter(a, b + 86_400_000L)
+                        }
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Selector de fecha; devuelve las 00:00 del día elegido en la hora local. */
+    private fun pickDate(titleRes: Int, onPicked: (Long) -> Unit) {
+        val cal = java.util.Calendar.getInstance()
+        val dlg = android.app.DatePickerDialog(this, { _, y, m, d ->
+            val c = java.util.Calendar.getInstance()
+            c.clear()
+            c.set(y, m, d, 0, 0, 0)
+            onPicked(c.timeInMillis)
+        }, cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH), cal.get(java.util.Calendar.DAY_OF_MONTH))
+        dlg.setTitle(titleRes)
+        dlg.show()
+    }
+
+    private fun applyDateFilter(from: Long, to: Long) {
+        settings.dateFrom = from
+        settings.dateTo = to
+        dateFromCache = from
+        dateToCache = to
+        chartSession = null
+        updateSessionsButton()
+        refreshMap()
+        refreshDataPanel()
     }
 
     private fun statsOf(pings: List<PingRow>, rx: Int): Stats {
@@ -1541,7 +1853,8 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(R.string.sessions_title)
                 .setMultiChoiceItems(labels, checked) { _, which, on -> checked[which] = on }
                 .setNeutralButton(R.string.sessions_all) { _, _ -> applySessionFilter(null) }
-                .setNegativeButton(R.string.cancel, null)
+                // La lista va del más reciente al más antiguo
+                .setNegativeButton(R.string.sessions_last) { _, _ -> applySessionFilter(setOf(sessions.first())) }
                 .setPositiveButton(android.R.string.ok) { _, _ ->
                     val picked = sessions.filterIndexed { i, _ -> checked[i] }.toSet()
                     // Ninguno o todos marcados equivale a "todos": así los wardrives futuros también se ven
@@ -1568,6 +1881,7 @@ class MainActivity : AppCompatActivity() {
             else -> getString(R.string.sessions_n, f.size)
         }
         btnSessions.text = getString(R.string.sessions_btn, what)
+        findViewById<Button>(R.id.btnDates)?.text = getString(R.string.dates_btn, dateLabel())
     }
 
     // ------------------------------------------------------------ estado
@@ -1582,6 +1896,9 @@ class MainActivity : AppCompatActivity() {
                 launch { WardriveState.lastPing.collect { updateStatus() } }
                 launch { WardriveState.blocker.collect { updateStatus() } }
                 launch { WardriveState.channelUtil.collect { updateStatus() } }
+                launch { WardriveState.beaconInfo.collect { updateStatus() } }
+                launch { WardriveState.coverageEvent.collect { updateStatus() } }
+                launch { WardriveState.nodeRole.collect { updateStatus() } }
                 launch {
                     WardriveState.dataVersion.debounce(1_500).collect {
                         refreshMap()
@@ -1645,6 +1962,8 @@ class MainActivity : AppCompatActivity() {
             }
         } ?: getString(R.string.last_none)
         WardriveState.blocker.value?.let { tvLast.append("\n⏸ $it") }
+        WardriveState.beaconInfo.value?.let { if (running) tvLast.append("\n⏱ $it") }
+        WardriveState.coverageEvent.value?.let { if (running) tvLast.append("\n▲ $it") }
 
         tvConnDetail.text = buildString {
             append(
@@ -1670,6 +1989,10 @@ class MainActivity : AppCompatActivity() {
                     else getString(R.string.cd_channel_missing, settings.channelName)
                 )
                 append("\n").append(getString(R.string.cd_nodes, WardriveState.nodes.value.size))
+                WardriveState.nodeRole.value?.let { r ->
+                    append("\n").append(getString(R.string.cd_role, DeviceRole.name(r)))
+                    if (DeviceRole.isRepeater(r)) append("\n⚠ ").append(getString(R.string.cd_role_warn))
+                }
                 WardriveState.channelUtil.value?.let {
                     append("\n").append(getString(R.string.chutil_short, it.roundToInt()))
                 }
@@ -1710,7 +2033,7 @@ class MainActivity : AppCompatActivity() {
         if (!settings.nodeGps || WardriveState.conn.value.conn == Conn.DISCONNECTED) return ""
         val n = WardriveState.nodeLocation.value ?: return "\n" + getString(R.string.gps_node_none)
         val age = ((SystemClock.elapsedRealtimeNanos() - n.elapsedRealtimeNanos) / 1_000_000_000).toInt()
-        return "\n" + getString(R.string.gps_node_line, "±${n.accuracy.toInt()} m", age)
+        return "\n" + getString(R.string.gps_node_line, if (n.hasAccuracy()) "±${n.accuracy.toInt()} m" else "±?", age)
     }
 
     // ------------------------------------------------------------ conexión

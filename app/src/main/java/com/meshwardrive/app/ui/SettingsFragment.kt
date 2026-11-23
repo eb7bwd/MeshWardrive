@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreferenceCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -22,7 +23,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
         listOf(
             "interval_s", "min_distance_m", "hop_limit", "ack_timeout_s", "max_accuracy_m", "cell_size_m",
-            "smart_min", "chutil_threshold", "reconnect_giveup_min",
+            "smart_min", "chutil_threshold", "reconnect_giveup_min", "smart_fail_max", "smart_min_dist_m",
+            "sb_low_kmh", "sb_high_kmh", "sb_slow_s", "sb_fast_s", "sb_turn_min", "sb_turn_slope",
         ).forEach { key ->
             findPreference<EditTextPreference>(key)?.setOnBindEditTextListener {
                 it.inputType = InputType.TYPE_CLASS_NUMBER
@@ -31,6 +33,39 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
         findPreference<EditTextPreference>("min_distance_m")?.title =
             getString(R.string.pref_distance) + " · " + getString(R.string.pref_distance_sum)
+
+        // Cada número va con una línea que explica qué hace, junto al propio ajuste
+        mapOf(
+            "interval_s" to R.string.help_interval,
+            "hop_limit" to R.string.help_hop,
+            "ack_timeout_s" to R.string.help_timeout,
+            "max_accuracy_m" to R.string.help_accuracy,
+            "cell_size_m" to R.string.help_cell,
+            "smart_min" to R.string.help_smart_min,
+            "smart_fail_max" to R.string.help_smart_fail,
+            "smart_min_dist_m" to R.string.help_smart_dist,
+            "chutil_threshold" to R.string.help_chutil,
+            "reconnect_giveup_min" to R.string.help_reconnect,
+            "sb_low_kmh" to R.string.help_sb_low,
+            "sb_slow_s" to R.string.help_sb_slow,
+            "sb_high_kmh" to R.string.help_sb_high,
+            "sb_fast_s" to R.string.help_sb_fast,
+            "sb_turn_min" to R.string.help_sb_turn_min,
+            "sb_turn_slope" to R.string.help_sb_turn_slope,
+        ).forEach { (key, help) ->
+            findPreference<EditTextPreference>(key)?.summaryProvider =
+                Preference.SummaryProvider<EditTextPreference> { p ->
+                    val v = p.text?.takeIf { it.isNotBlank() } ?: "—"
+                    v + " · " + getString(help)
+                }
+        }
+        mapOf(
+            "scoring_mode" to R.string.help_scoring,
+            "theme" to R.string.help_theme,
+        ).forEach { (key, help) ->
+            findPreference<ListPreference>(key)?.summaryProvider =
+                Preference.SummaryProvider<ListPreference> { p -> (p.entry ?: "") .toString() + " · " + getString(help) }
+        }
         findPreference<EditTextPreference>("reconnect_giveup_min")?.setOnBindEditTextListener {
             it.inputType = InputType.TYPE_CLASS_NUMBER
         }
@@ -68,8 +103,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 val v = sp.getString("mode", MODE_CHANNEL)
                 if (p.value != v) p.value = v
             }
-            "record_passive" -> findPreference<SwitchPreferenceCompat>("record_passive")?.let { p ->
-                val v = sp.getBoolean("record_passive", true)
+            "record_passive", "ask_conditions" -> findPreference<SwitchPreferenceCompat>(key)?.let { p ->
+                val v = sp.getBoolean(key, true)
                 if (p.isChecked != v) p.isChecked = v
             }
         }
@@ -81,6 +116,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         sp.registerOnSharedPreferenceChangeListener(prefSync)
         prefSync.onSharedPreferenceChanged(sp, "mode")
         prefSync.onSharedPreferenceChanged(sp, "record_passive")
+        prefSync.onSharedPreferenceChanged(sp, "ask_conditions")
     }
 
     override fun onStop() {

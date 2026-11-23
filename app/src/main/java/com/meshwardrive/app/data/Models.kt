@@ -10,11 +10,17 @@ enum class PingStatus(val label: String) {
     ACK_DEST("ACK from target"),       // modo directo: el nodo destino confirmó
     NAK("Rejected / nobody listening"),
     TIMEOUT("No response"),
-    SEND_ERROR("Send error");
+    SEND_ERROR("Send error"),
+    /** El propio nodo no lo emitió (ciclo de trabajo agotado, límite de envíos...): no dice nada de la cobertura. */
+    NOT_SENT("Not sent");
 
     val isOk: Boolean get() = this == ACK_RELAY || this == ACK_DEST
-    val isFail: Boolean get() = this == NAK || this == TIMEOUT || this == SEND_ERROR
+    val isFail: Boolean get() = this == NAK || this == TIMEOUT
+    val notSent: Boolean get() = this == SEND_ERROR || this == NOT_SENT
 }
+
+/** Si la respuesta llega a más de esta distancia del envío, el éxito se sitúa donde llegó. */
+const val LATE_ACK_M = 75f
 
 data class PingRow(
     var rowId: Long = 0,
@@ -44,8 +50,20 @@ data class PingRow(
     var ackRssi: Int? = null,
     var ackHops: Int? = null,
     var ackRelayNode: Int? = null,
+    // Dónde estábamos al llegar la respuesta (puede llegar tras varios reintentos del firmware)
+    var ackLat: Double? = null,
+    var ackLon: Double? = null,
+    var ackDistM: Float? = null,
 ) {
     val latencyMs: Long? get() = ackTs?.let { it - ts }
+
+    /** La respuesta llegó lejos de donde se envió: la posición del envío no representa el éxito. */
+    val movedBeforeAck: Boolean
+        get() = status.isOk && ackLat != null && ackLon != null && (ackDistM ?: 0f) > LATE_ACK_M
+
+    /** Posición que representa el resultado: la de la respuesta si nos habíamos movido mucho. */
+    val effLat: Double get() = if (movedBeforeAck) ackLat!! else lat
+    val effLon: Double get() = if (movedBeforeAck) ackLon!! else lon
 
     /** Mejor SNR disponible para colorear el mapa. */
     val bestSnr: Float? get() = listOfNotNull(relaySnr, ackSnr).maxOrNull()
@@ -106,6 +124,8 @@ data class TrackPoint(
     val lat: Double,
     val lon: Double,
     val acc: Float?,
+    /** Altitud del GPS en metros (poco precisa); null si no la había. */
+    val alt: Double? = null,
 )
 
 /** Datos de un wardrive: nombre que le pone el usuario y, si es importado, quién lo compartió. */
@@ -114,4 +134,6 @@ data class SessionMeta(
     val name: String? = null,
     val importedFrom: String? = null,
     val created: Long = 0,
+    /** Cómo iba el nodo; null en wardrives de versiones anteriores. */
+    val conditions: Conditions? = null,
 )

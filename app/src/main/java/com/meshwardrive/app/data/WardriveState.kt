@@ -40,6 +40,16 @@ object WardriveState {
     /** Ocupación del canal (%) que informa el nodo, o null si aún no ha llegado. */
     val channelUtil = MutableStateFlow<Float?>(null)
     val stats = MutableStateFlow(Stats())
+
+    /** Rol del nodo conectado (DeviceRole) y su potencia de emisión configurada, si se conocen. */
+    val nodeRole = MutableStateFlow<Int?>(null)
+    val nodeTxPower = MutableStateFlow<Int?>(null)
+
+    /** Ping según la velocidad: velocidad e intervalo que se están usando, para la tarjeta del mapa. */
+    val beaconInfo = MutableStateFlow<String?>(null)
+
+    /** Aviso de cambio de cobertura detectado durante el wardrive (cobertura nueva o perdida). */
+    val coverageEvent = MutableStateFlow<String?>(null)
     val nodes = MutableStateFlow<Map<Int, NodeEntry>>(emptyMap())
 
     /** Se incrementa cada vez que cambian los datos guardados (para repintar el mapa). */

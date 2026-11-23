@@ -44,7 +44,8 @@ object Exporter {
         w.write(
             "id,session,timestamp_utc,lat,lon,alt_m,gps_acc_m,speed_mps,mode,channel,dest,hop_limit,text," +
                 "status,error,latency_ms,relay_node,relay_candidates,relay_snr,relay_rssi," +
-                "ack_from,ack_from_name,ack_snr,ack_rssi,ack_hops,ack_relay_node,ack_relay_candidates\n"
+                "ack_from,ack_from_name,ack_snr,ack_rssi,ack_hops,ack_relay_node,ack_relay_candidates," +
+                "ack_lat,ack_lon,ack_moved_m\n"
         )
         for (p in pings) {
             val cols = listOf(
@@ -60,6 +61,7 @@ object Exporter {
                 hexNode(p.ackFrom), p.ackFrom?.let { nodes[it]?.label } ?: "",
                 f1(p.ackSnr), num(p.ackRssi), num(p.ackHops),
                 hexByte(p.ackRelayNode), candidates(p.ackRelayNode, nodes, myNum),
+                f7(p.ackLat), f7(p.ackLon), p.ackDistM?.let { String.format(Locale.US, "%.0f", it) } ?: "",
             )
             w.write(cols.joinToString(",") { csv(it) })
             w.write("\n")
@@ -122,8 +124,10 @@ object Exporter {
             p.ackRssi?.let { props.put("ack_rssi", it) }
             p.ackHops?.let { props.put("ack_hops", it) }
             p.ackRelayNode?.let { props.put("ack_relay_node", hexByte(it)) }
+            p.ackDistM?.let { props.put("ack_moved_m", it.toDouble()) }
+            if (p.movedBeforeAck) props.put("sent_lat", p.lat).put("sent_lon", p.lon)
             features.put(
-                JSONObject().put("type", "Feature").put("geometry", point(p.lat, p.lon)).put("properties", props)
+                JSONObject().put("type", "Feature").put("geometry", point(p.effLat, p.effLon)).put("properties", props)
             )
         }
         for (r in rx) {

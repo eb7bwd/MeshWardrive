@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 class WardriveDb private constructor(ctx: Context) :
-    SQLiteOpenHelper(ctx, "wardrive.db", null, 2) {
+    SQLiteOpenHelper(ctx, "wardrive.db", null, 3) {
 
     companion object {
         @Volatile private var instance: WardriveDb? = null
@@ -62,10 +62,36 @@ class WardriveDb private constructor(ctx: Context) :
         db.execSQL("CREATE INDEX idx_pings_ts ON pings(ts)")
         db.execSQL("CREATE INDEX idx_rx_ts ON rx(ts)")
         createV2(db)
+        createV3(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createV2(db)
+        if (oldVersion < 3) createV3(db)
+    }
+
+    /**
+     * Versión 3: dónde estábamos al llegar la respuesta de cada ping, altitud de la ruta y
+     * condiciones de cada wardrive (cómo iba el nodo).
+     */
+    private fun createV3(db: SQLiteDatabase) {
+        fun add(table: String, col: String, type: String) {
+            val exists = db.rawQuery("PRAGMA table_info($table)", null).use { c ->
+                var found = false
+                while (c.moveToNext()) if (c.getString(1) == col) found = true
+                found
+            }
+            if (!exists) db.execSQL("ALTER TABLE $table ADD COLUMN $col $type")
+        }
+        add("pings", "ack_lat", "REAL")
+        add("pings", "ack_lon", "REAL")
+        add("pings", "ack_dist", "REAL")
+        add("track", "alt", "REAL")
+        add("sessions", "cond_tx", "INTEGER")
+        add("sessions", "cond_ext", "INTEGER")
+        add("sessions", "cond_gain", "REAL")
+        add("sessions", "cond_place", "TEXT")
+        add("sessions", "cond_transport", "TEXT")
     }
 
     /** Versión 2: nombre de cada wardrive, quién lo compartió y la ruta recorrida. */
@@ -112,6 +138,9 @@ class WardriveDb private constructor(ctx: Context) :
         put("ack_rssi", r.ackRssi)
         put("ack_hops", r.ackHops)
         put("ack_relay_node", r.ackRelayNode)
+        put("ack_lat", r.ackLat)
+        put("ack_lon", r.ackLon)
+        put("ack_dist", r.ackDistM)
     }
 
     fun insertPing(r: PingRow): Long = writableDatabase.insert("pings", null, pingValues(r))
@@ -153,11 +182,32 @@ class WardriveDb private constructor(ctx: Context) :
         ackRssi = int("ack_rssi"),
         ackHops = int("ack_hops"),
         ackRelayNode = int("ack_relay_node"),
+        ackLat = dbl("ack_lat"),
+        ackLon = dbl("ack_lon"),
+        ackDistM = flt("ack_dist"),
     )
 
     /** Pings que quedaron a medias (app cerrada); se marcan como sin respuesta. */
     fun closeStalePings() {
         writableDatabase.execSQL("UPDATE pings SET status = 'TIMEOUT' WHERE status = 'PENDING'")
+    }
+
+    /** Borra mediciones concretas (pings y recepciones) por id, todo o nada. */
+    fun deleteMeasurements(pingIds: Collection<Long>, rxIds: Collection<Long>) {
+        if (pingIds.isEmpty() && rxIds.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (chunk in pingIds.chunked(500)) {
+                db.execSQL("DELETE FROM pings WHERE id IN (${chunk.joinToString(",") { "?" }})", chunk.map<Long, Any> { it }.toTypedArray())
+            }
+            for (chunk in rxIds.chunked(500)) {
+                db.execSQL("DELETE FROM rx WHERE id IN (${chunk.joinToString(",") { "?" }})", chunk.map<Long, Any> { it }.toTypedArray())
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     // ---------------- Recepción pasiva ----------------
@@ -272,7 +322,7 @@ class WardriveDb private constructor(ctx: Context) :
                     PingStatus.ACK_RELAY -> s.copy(ackRelay = n)
                     PingStatus.ACK_DEST -> s.copy(ackDest = n)
                     PingStatus.PENDING -> s.copy(pending = n)
-                    null -> s
+                    null, PingStatus.NOT_SENT, PingStatus.SEND_ERROR -> s
                     else -> s.copy(failed = s.failed + n)
                 }
             }
@@ -301,14 +351,17 @@ class WardriveDb private constructor(ctx: Context) :
 
     // ---------------- Ruta ----------------
 
+    private fun trackValues(t: TrackPoint) = ContentValues().apply {
+        put("session", t.session)
+        put("ts", t.ts)
+        put("lat", t.lat)
+        put("lon", t.lon)
+        put("acc", t.acc)
+        put("alt", t.alt)
+    }
+
     fun insertTrack(t: TrackPoint) {
-        writableDatabase.insert("track", null, ContentValues().apply {
-            put("session", t.session)
-            put("ts", t.ts)
-            put("lat", t.lat)
-            put("lon", t.lon)
-            put("acc", t.acc)
-        })
+        writableDatabase.insert("track", null, trackValues(t))
     }
 
     fun allTrack(): List<TrackPoint> =
@@ -322,6 +375,7 @@ class WardriveDb private constructor(ctx: Context) :
                         lat = c.dbl("lat") ?: 0.0,
                         lon = c.dbl("lon") ?: 0.0,
                         acc = c.flt("acc"),
+                        alt = c.dbl("alt"),
                     )
                 )
             }
@@ -335,7 +389,7 @@ class WardriveDb private constructor(ctx: Context) :
             val out = HashMap<String, SessionMeta>()
             while (c.moveToNext()) {
                 val id = c.str("id") ?: continue
-                out[id] = SessionMeta(id, c.str("name"), c.str("imported_from"), c.long("created") ?: 0)
+                out[id] = SessionMeta(id, c.str("name"), c.str("imported_from"), c.long("created") ?: 0, c.conditions())
             }
             out
         }
@@ -346,6 +400,32 @@ class WardriveDb private constructor(ctx: Context) :
             put("id", id)
             put("created", created)
         }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    fun setConditions(id: String, cond: Conditions?) {
+        val db = writableDatabase
+        val v = condValues(cond)
+        if (db.update("sessions", v, "id = ?", arrayOf(id)) == 0) {
+            v.put("id", id)
+            db.insert("sessions", null, v)
+        }
+    }
+
+    private fun condValues(cond: Conditions?) = ContentValues().apply {
+        if (cond == null) {
+            putNull("cond_place")
+            putNull("cond_tx")
+            putNull("cond_ext")
+            putNull("cond_gain")
+            putNull("cond_transport")
+        } else {
+            val c = Conditions.sanitize(cond)
+            put("cond_place", c.placement)
+            put("cond_tx", c.txPowerDbm)
+            put("cond_ext", if (c.externalAntenna) 1 else 0)
+            put("cond_gain", c.antennaGainDbi)
+            put("cond_transport", c.transport)
+        }
     }
 
     fun renameSession(id: String, name: String?) {
@@ -393,7 +473,7 @@ class WardriveDb private constructor(ctx: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.insert("sessions", null, ContentValues().apply {
+            db.insert("sessions", null, condValues(w.conditions).apply {
                 put("id", w.id)
                 put("name", w.name)
                 put("imported_from", importedFrom)
@@ -401,15 +481,7 @@ class WardriveDb private constructor(ctx: Context) :
             })
             for (p in w.pings) db.insert("pings", null, pingValues(p))
             for (r in w.rx) db.insert("rx", null, rxValues(r))
-            for (t in w.track) {
-                db.insert("track", null, ContentValues().apply {
-                    put("session", t.session)
-                    put("ts", t.ts)
-                    put("lat", t.lat)
-                    put("lon", t.lon)
-                    put("acc", t.acc)
-                })
-            }
+            for (t in w.track) db.insert("track", null, trackValues(t))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -426,3 +498,17 @@ private fun Cursor.long(name: String): Long? = idx(name).let { if (isNull(it)) n
 private fun Cursor.dbl(name: String): Double? = idx(name).let { if (isNull(it)) null else getDouble(it) }
 private fun Cursor.flt(name: String): Float? = idx(name).let { if (isNull(it)) null else getFloat(it) }
 private fun Cursor.str(name: String): String? = idx(name).let { if (isNull(it)) null else getString(it) }
+
+/** Condiciones guardadas de un wardrive; null si no se indicaron. */
+private fun Cursor.conditions(): Conditions? {
+    val place = str("cond_place") ?: return null
+    return Conditions.sanitize(
+        Conditions(
+            txPowerDbm = int("cond_tx"),
+            externalAntenna = (int("cond_ext") ?: 0) != 0,
+            antennaGainDbi = flt("cond_gain") ?: Conditions.STOCK_GAIN,
+            placement = place,
+            transport = str("cond_transport") ?: Conditions.TRANSPORT_WALK,
+        )
+    )
+}

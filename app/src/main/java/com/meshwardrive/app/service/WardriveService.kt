@@ -29,6 +29,7 @@ import com.meshwardrive.app.data.MODE_CHANNEL
 import com.meshwardrive.app.data.MODE_DIRECT
 import com.meshwardrive.app.data.MODE_LISTEN
 import com.meshwardrive.app.data.CoverageGrid
+import com.meshwardrive.app.data.Geo
 import com.meshwardrive.app.data.TextSafety
 import com.meshwardrive.app.data.TrackPoint
 import com.meshwardrive.app.data.NodeEntry
@@ -42,6 +43,7 @@ import com.meshwardrive.app.data.labelRes
 import com.meshwardrive.app.data.WardriveState.Conn
 import com.meshwardrive.app.proto.BROADCAST
 import com.meshwardrive.app.proto.ChannelMsg
+import com.meshwardrive.app.proto.DeviceRole
 import com.meshwardrive.app.proto.DataMsg
 import com.meshwardrive.app.proto.FromRadio
 import com.meshwardrive.app.proto.MeshPacket
@@ -84,6 +86,8 @@ class WardriveService : Service(), MeshBle.Listener {
         private const val ALERT_ID = 2
         private const val STORAGE_ID = 3
         private const val NODE_FIX_MAX_MS = 60_000L
+        private const val DUTY_PAUSE_MS = 5 * 60_000L
+        private const val MIN_INTERVAL_MS = 15_000L
 
         fun send(ctx: Context, action: String, address: String? = null, name: String? = null) {
             val i = Intent(ctx, WardriveService::class.java).setAction(action)
@@ -127,8 +131,18 @@ class WardriveService : Service(), MeshBle.Listener {
     private var nodeFix: Location? = null
     private var lastTrackLoc: Location? = null
     private var lastTrackAt = 0L
-    private val cellCounts = HashMap<CoverageGrid.Key, Int>()
+    // Ping inteligente: mediciones con respuesta por celda (todas las salidas), fallos por celda en
+    // esta salida y posiciones medidas por celda (para la distancia mínima)
+    private val cellOk = HashMap<CoverageGrid.Key, Int>()
+    private val cellSessionFails = HashMap<CoverageGrid.Key, Int>()
+    private val cellPoints = HashMap<CoverageGrid.Key, MutableList<DoubleArray>>()
+    // Para avisar de cobertura nueva: celdas que antes solo tenían fallos
+    private val cellHistFail = HashSet<CoverageGrid.Key>()
+    private val cellHistOk = HashSet<CoverageGrid.Key>()
     private var cellCountsSize = 0
+    /** Ciclo de trabajo del nodo agotado: no se intentan pings automáticos hasta esta hora. */
+    private var dutyPauseUntil = 0L
+    private var roleWarned = false
     private var wakeLock: PowerManager.WakeLock? = null
 
     private class PendingPing(val row: PingRow) {
@@ -297,6 +311,10 @@ class WardriveService : Service(), MeshBle.Listener {
             }
             is FromRadio.Channel -> channels[msg.channel.index] = msg.channel
             is FromRadio.ConfigComplete -> if (msg.id == configId) onConfigComplete()
+            is FromRadio.Config -> {
+                msg.role?.let { WardriveState.nodeRole.value = it }
+                msg.txPowerDbm?.let { WardriveState.nodeTxPower.value = it }
+            }
             is FromRadio.Packet -> handlePacket(msg.packet)
             FromRadio.Rebooted -> WardriveState.log(getString(R.string.log_rebooted))
             FromRadio.Other -> Unit
@@ -317,12 +335,22 @@ class WardriveService : Service(), MeshBle.Listener {
             message = null,
         )
         WardriveState.log(getString(R.string.log_ready, myName ?: "!%08x".format(myNodeNum), nodes.size))
+        roleWarned = false
+        warnRole()
         if (ch == null) {
             WardriveState.log(getString(R.string.log_no_channel, settings.channelName))
         } else {
             WardriveState.log(getString(R.string.st_channel, ch.name, ch.index))
         }
         updateNotification()
+    }
+
+    /** Un nodo en rol de repetidor gasta su ciclo de trabajo en tráfico ajeno: se avisa una vez. */
+    private fun warnRole() {
+        val role = WardriveState.nodeRole.value ?: return
+        if (roleWarned || !DeviceRole.isRepeater(role)) return
+        roleWarned = true
+        WardriveState.log("⚠ " + getString(R.string.log_role_repeater, DeviceRole.name(role)))
     }
 
     private fun resolveChannel(): ChannelMsg? {
@@ -435,6 +463,7 @@ class WardriveService : Service(), MeshBle.Listener {
                 // ACK real del nodo destino: SNR/RSSI/saltos del camino de vuelta
                 row.status = PingStatus.ACK_DEST
                 row.ackTs = now
+                stampAckPosition(row)
                 row.ackFrom = p.from
                 row.ackSnr = if (p.hasRadioInfo) p.rxSnr else null
                 row.ackRssi = p.rxRssi.takeIf { it != 0 }
@@ -447,6 +476,7 @@ class WardriveService : Service(), MeshBle.Listener {
                 if (row.status == PingStatus.PENDING) {
                     row.status = PingStatus.ACK_RELAY
                     row.ackTs = now
+                    stampAckPosition(row)
                     row.relayNode = p.relayNode.takeIf { it != 0 }
                     row.relaySnr = if (p.hasRadioInfo) p.rxSnr else null
                     row.relayRssi = p.rxRssi.takeIf { it != 0 }
@@ -455,8 +485,32 @@ class WardriveService : Service(), MeshBle.Listener {
             }
         } else {
             row.errorReason = err
-            if (row.status == PingStatus.PENDING) row.status = PingStatus.NAK
+            if (row.status == PingStatus.PENDING) {
+                row.status = if (RoutingError.isLocal(err)) PingStatus.NOT_SENT else PingStatus.NAK
+            }
+            if (err == RoutingError.DUTY_CYCLE_LIMIT) {
+                // El nodo no puede emitir hasta recuperar margen en su ventana de una hora
+                dutyPauseUntil = now + DUTY_PAUSE_MS
+                WardriveState.log("⏸ " + getString(R.string.blk_duty, hhmm(dutyPauseUntil)))
+            }
             finalizePing(pp)
+        }
+    }
+
+    private fun hhmm(ts: Long) = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ts))
+
+    /**
+     * Dónde estamos al llegar la respuesta. El firmware reintenta el ping si nadie lo repite, así
+     * que puede llegar bastantes segundos después: si nos hemos movido mucho, el éxito se sitúa aquí.
+     */
+    private fun stampAckPosition(row: PingRow) {
+        val l = currentFix(15_000) ?: return
+        row.ackLat = l.latitude
+        row.ackLon = l.longitude
+        row.ackDistM = Geo.distanceM(row.lat, row.lon, l.latitude, l.longitude).toFloat()
+        if (row.movedBeforeAck) {
+            val s = (row.latencyMs ?: 0L) / 1000.0
+            WardriveState.log(getString(R.string.log_late_ack, row.ackDistM!!.roundToInt(), String.format(Locale.US, "%.0f", s)))
         }
     }
 
@@ -493,6 +547,15 @@ class WardriveService : Service(), MeshBle.Listener {
         session = newSessionId()
         WardriveState.session.value = session
         db.ensureSession(session, System.currentTimeMillis())
+        // Condiciones de este wardrive (cómo va el nodo); la potencia, si el nodo la ha dicho
+        val cond = settings.conditions.let { c ->
+            if (c.txPowerDbm == null) c.copy(txPowerDbm = WardriveState.nodeTxPower.value) else c
+        }
+        runCatching { db.setConditions(session, cond) }
+        dutyPauseUntil = 0L
+        WardriveState.coverageEvent.value = null
+        WardriveState.beaconInfo.value = null
+        warnRole()
         seq = 0
         lastPingAt = 0
         lastPingLoc = null
@@ -544,7 +607,21 @@ class WardriveService : Service(), MeshBle.Listener {
             WardriveState.blocker.value = getString(R.string.blk_listen)
             return
         }
-        if (System.currentTimeMillis() - lastPingAt < settings.intervalS * 1000L) return
+        val now = System.currentTimeMillis()
+        if (now < dutyPauseUntil) {
+            WardriveState.blocker.value = getString(R.string.blk_duty, hhmm(dutyPauseUntil))
+            return
+        }
+        val since = now - lastPingAt
+        if (settings.smartBeacon) {
+            val fix = currentFix(10_000)
+            val interval = beaconIntervalS(fix)
+            val turn = lastPingAt > 0 && since >= MIN_INTERVAL_MS && fix != null && cornerPeg(fix)
+            if (since < interval * 1000L && !turn) return
+        } else {
+            WardriveState.beaconInfo.value = null
+            if (since < settings.intervalS * 1000L) return
+        }
         if (settings.chUtilPause) {
             val u = WardriveState.channelUtil.value
             if (u != null && u >= settings.chUtilThreshold) {
@@ -563,29 +640,111 @@ class WardriveService : Service(), MeshBle.Listener {
             }
         }
         if (loc != null && settings.smartPing) {
-            val n = cellCount(loc)
-            if (n >= settings.smartMin) {
-                WardriveState.blocker.value = getString(R.string.blk_cell_done, n)
+            if (cellCountsSize != settings.cellSizeM) loadCellCounts()
+            val k = cellKey(loc.latitude, loc.longitude)
+            val ok = cellOk[k] ?: 0
+            if (ok >= settings.smartMin) {
+                WardriveState.blocker.value = getString(R.string.blk_cell_done, ok)
                 return
+            }
+            val fails = cellSessionFails[k] ?: 0
+            if (settings.smartFailMax > 0 && fails >= settings.smartFailMax) {
+                WardriveState.blocker.value = getString(R.string.blk_cell_fails, fails)
+                return
+            }
+            val minD = settings.smartMinDistM
+            if (minD > 0) {
+                val near = cellPoints[k]?.any { Geo.distanceM(it[0], it[1], loc.latitude, loc.longitude) < minD } == true
+                if (near) {
+                    WardriveState.blocker.value = getString(R.string.blk_cell_near, minD)
+                    return
+                }
             }
         }
         doPing(manual = false)
     }
 
-    /** Pings ya hechos por celda, para el ping inteligente. */
+    /**
+     * Intervalo según la velocidad, como el SmartBeaconing de APRS: lento por debajo de la
+     * velocidad baja, rápido por encima de la alta y, entre medias, proporcional, para que la
+     * distancia entre pings sea parecida. Nunca por debajo del mínimo de 15 s.
+     */
+    private fun beaconIntervalS(fix: Location?): Int {
+        val slow = settings.sbSlowS
+        val fast = minOf(settings.sbFastS, slow).coerceAtLeast((MIN_INTERVAL_MS / 1000).toInt())
+        val kmh = if (fix != null && fix.hasSpeed()) fix.speed * 3.6f else 0f
+        val low = settings.sbLowKmh
+        val high = maxOf(settings.sbHighKmh, low + 1)
+        val s = when {
+            kmh <= low -> slow
+            kmh >= high -> fast
+            else -> (fast * high / kmh).roundToInt().coerceIn(fast, slow)
+        }
+        WardriveState.beaconInfo.value = getString(R.string.beacon_info, kmh.roundToInt(), s)
+        return s
+    }
+
+    /** Ping extra al girar: el umbral de giro baja cuanto más rápido se va. */
+    private fun cornerPeg(fix: Location): Boolean {
+        val last = lastPingLoc ?: return false
+        if (!fix.hasBearing() || !last.hasBearing() || !fix.hasSpeed()) return false
+        val kmh = fix.speed * 3.6f
+        if (kmh <= settings.sbLowKmh) return false
+        var d = kotlin.math.abs(fix.bearing - last.bearing)
+        if (d > 180f) d = 360f - d
+        val threshold = settings.sbTurnMinDeg + settings.sbTurnSlope / kmh
+        return d > threshold
+    }
+
+    private fun cellKey(lat: Double, lon: Double) = CoverageGrid.keyOf(lat, lon, cellCountsSize.toDouble())
+
+    /** Datos por celda para el ping inteligente y el aviso de cobertura nueva. */
     private fun loadCellCounts() {
-        cellCounts.clear()
+        cellOk.clear()
+        cellSessionFails.clear()
+        cellPoints.clear()
+        cellHistFail.clear()
+        cellHistOk.clear()
         cellCountsSize = settings.cellSizeM
-        val size = cellCountsSize.toDouble()
         for (p in db.allPings()) {
-            val k = CoverageGrid.keyOf(p.lat, p.lon, size)
-            cellCounts[k] = (cellCounts[k] ?: 0) + 1
+            when {
+                p.status.isOk -> {
+                    val k = cellKey(p.effLat, p.effLon)
+                    cellOk[k] = (cellOk[k] ?: 0) + 1
+                    cellHistOk.add(k)
+                    cellPoints.getOrPut(k) { ArrayList() }.add(doubleArrayOf(p.effLat, p.effLon))
+                }
+                p.status.isFail -> {
+                    val k = cellKey(p.lat, p.lon)
+                    if (p.session != session) cellHistFail.add(k) else cellSessionFails[k] = (cellSessionFails[k] ?: 0) + 1
+                }
+            }
         }
     }
 
-    private fun cellCount(loc: Location): Int {
-        if (cellCountsSize != settings.cellSizeM) loadCellCounts()
-        return cellCounts[CoverageGrid.keyOf(loc.latitude, loc.longitude, cellCountsSize.toDouble())] ?: 0
+    /** Al cerrarse un ping se actualizan los datos por celda. */
+    private fun countPingResult(row: PingRow) {
+        if (cellCountsSize != settings.cellSizeM) {
+            loadCellCounts()
+            return
+        }
+        when {
+            row.status.isOk -> {
+                val k = cellKey(row.effLat, row.effLon)
+                cellOk[k] = (cellOk[k] ?: 0) + 1
+                cellPoints.getOrPut(k) { ArrayList() }.add(doubleArrayOf(row.effLat, row.effLon))
+                if (k in cellHistFail && k !in cellHistOk) {
+                    val msg = getString(R.string.event_new_coverage)
+                    WardriveState.coverageEvent.value = msg
+                    WardriveState.log("▲ $msg")
+                }
+                cellHistOk.add(k)
+            }
+            row.status.isFail -> {
+                val k = cellKey(row.lat, row.lon)
+                cellSessionFails[k] = (cellSessionFails[k] ?: 0) + 1
+            }
+        }
     }
 
     private suspend fun doPing(manual: Boolean) {
@@ -660,9 +819,10 @@ class WardriveService : Service(), MeshBle.Listener {
         WardriveState.blocker.value = null
         lastPingAt = row.ts
         lastPingLoc = loc
+        // Para la distancia mínima entre mediciones de una celda cuenta también lo que se acaba de enviar
         if (cellCountsSize == settings.cellSizeM) {
-            val k = CoverageGrid.keyOf(loc.latitude, loc.longitude, cellCountsSize.toDouble())
-            cellCounts[k] = (cellCounts[k] ?: 0) + 1
+            cellPoints.getOrPut(cellKey(loc.latitude, loc.longitude)) { ArrayList() }
+                .add(doubleArrayOf(loc.latitude, loc.longitude))
         }
 
         val packet = MeshPacket(
@@ -710,6 +870,7 @@ class WardriveService : Service(), MeshBle.Listener {
         if (pending === pp) pending = null
         val row = pp.row
         savePing(row)
+        countPingResult(row)
         WardriveState.log("← ${describe(row)}")
         WardriveState.stats.value = db.stats()
         WardriveState.bumpData()
@@ -851,29 +1012,53 @@ class WardriveService : Service(), MeshBle.Listener {
         return if (phoneGood) phone else node
     }
 
-    /** Posición que envía nuestro propio nodo, si tiene GPS. */
+    /**
+     * Posición que envía nuestro propio nodo, si tiene GPS. Solo llega cuando el nodo la emite
+     * (cada 30 s como mucho si se mueve, con la configuración por defecto), así que:
+     * - la edad se calcula con la hora del propio fix, no con la de llegada;
+     * - si el canal recorta la precisión (precision_bits), ese error se suma al del GPS;
+     * - si no trae ningún dato de precisión, queda como desconocida.
+     */
     private fun onNodePosition(pos: PositionMsg) {
         val lat = pos.lat ?: return
         val lon = pos.lon ?: return
-        val nowS = System.currentTimeMillis() / 1000
-        // Una posición antigua no sirve para situar el ping de ahora
-        if (pos.time != 0 && kotlin.math.abs(nowS - (pos.time.toLong() and 0xFFFFFFFFL)) > 120) return
+        val nowMs = System.currentTimeMillis()
+        val ageMs = if (pos.time != 0) nowMs - (pos.time.toLong() and 0xFFFFFFFFL) * 1000L else 0L
+        val diag = settings.nodeGps
+        // Una posición antigua (o con el reloj del nodo muy desfasado) no sirve para situar un ping
+        if (pos.time != 0 && kotlin.math.abs(ageMs) > 120_000L) {
+            if (diag) WardriveState.log(getString(R.string.log_node_fix_old, ageMs / 1000))
+            return
+        }
         val hdop = if (pos.hdop > 0) pos.hdop / 100f else 0f
-        val accM = when {
+        var accM: Float? = when {
             pos.accuracyMm > 0 && hdop > 0f -> pos.accuracyMm / 1000f * hdop
             pos.accuracyMm > 0 -> pos.accuracyMm / 1000f
             hdop > 0f -> hdop * 5f
-            else -> 20f
+            else -> null
         }
+        val prec = pos.precisionErrorM
+        if (prec != null) accM = maxOf(accM ?: 0f, prec.toFloat())
+        val age = ageMs.coerceAtLeast(0L)
         val l = Location("meshtastic-node").apply {
             latitude = lat
             longitude = lon
-            time = System.currentTimeMillis()
-            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-            accuracy = accM.coerceIn(1f, 10_000f)
+            time = nowMs - age
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() - age * 1_000_000L
+            accM?.let { accuracy = it.coerceIn(1f, 100_000f) }
+            if (pos.alt != 0) altitude = pos.alt.toDouble()
         }
         nodeFix = l
         WardriveState.nodeLocation.value = l
+        if (diag) {
+            val accTxt = accM?.let { "±${it.roundToInt()} m" } ?: "±?"
+            val note = when {
+                prec != null -> " · " + getString(R.string.log_node_fix_prec, prec.roundToInt())
+                accM == null -> " · " + getString(R.string.log_node_fix_noacc)
+                else -> ""
+            }
+            WardriveState.log(getString(R.string.log_node_fix, accTxt, age / 1000) + note)
+        }
         if (settings.nodeGps && WardriveState.running.value && currentFix(10_000) === l) maybeTrack(l)
     }
 
@@ -890,7 +1075,10 @@ class WardriveService : Service(), MeshBle.Listener {
         }
         runCatching {
             db.insertTrack(
-                TrackPoint(session, now, loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy else null)
+                TrackPoint(
+                    session, now, loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy else null,
+                    if (loc.hasAltitude()) loc.altitude else null,
+                )
             )
         }
         lastTrackLoc = loc

@@ -66,7 +66,10 @@ object CoverageExport {
      * Polígonos de celda con estadísticas. Capa "coverage" = pings; capa "rx" = recepción pasiva.
      * Incluye propiedades de estilo (fill, stroke…) que entienden geojson.io, uMap y GitHub.
      */
-    fun cellsGeoJson(out: OutputStream, pings: List<PingRow>, rx: List<RxRow>, sizeM: Int) {
+    fun cellsGeoJson(
+        out: OutputStream, pings: List<PingRow>, rx: List<RxRow>, sizeM: Int,
+        sc: Scoring.Context = Scoring.Context.CLASSIC_DEFAULT,
+    ) {
         val w = out.bufferedWriter()
         w.write("{\"type\":\"FeatureCollection\",\"features\":[")
         var first = true
@@ -79,12 +82,15 @@ object CoverageExport {
             w.write(props)
             w.write("}}")
         }
-        for (c in CoverageGrid.pingCells(pings, sizeM)) {
+        for (c in CoverageGrid.pingCells(pings, sizeM, sc)) {
             val color = rgb(CoverageGrid.cellColor(c))
             feature(c, buildString {
                 append("\"layer\":\"coverage\",\"cell_size_m\":$sizeM")
                 append(",\"class\":").append(js(CoverageGrid.cellClass(c)))
-                append(",\"pings\":${c.count},\"ok\":${c.ok},\"fail\":${c.fail},\"pending\":${c.pending}")
+                append(",\"pings\":${c.count},\"ok\":${c.ok},\"fail\":${c.fail},\"unconfirmed_fail\":${c.weakFail},\"pending\":${c.pending}")
+                append(",\"trend\":").append(js(CoverageGrid.trendClass(c)))
+                append(",\"first\":").append(if (c.firstTs != Long.MAX_VALUE) js(iso(c.firstTs)) else "null")
+                append(",\"last\":").append(if (c.lastTs > 0) js(iso(c.lastTs)) else "null")
                 append(",\"success_pct\":").append(c.successPct?.toString() ?: "null")
                 append(",\"best_snr\":").append(c.bestSnr?.let { f1(it) } ?: "null")
                 append(",\"avg_snr\":").append(c.avgSnr?.let { f1(it) } ?: "null")
@@ -127,16 +133,25 @@ object CoverageExport {
     }
 
     /** KML para Google Earth, OsmAnd, QGIS…: celdas, pings, recepción pasiva y nodos en carpetas. */
-    fun kml(out: OutputStream, pings: List<PingRow>, rx: List<RxRow>, nodes: Map<Int, NodeEntry>, sizeM: Int) {
+    fun kml(
+        out: OutputStream, pings: List<PingRow>, rx: List<RxRow>, nodes: Map<Int, NodeEntry>, sizeM: Int,
+        sc: Scoring.Context = Scoring.Context.CLASSIC_DEFAULT,
+    ) {
         val w = out.bufferedWriter()
         w.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         w.write("<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document>\n")
         w.write("<name>MeshWardrive · Meshtastic coverage</name>\n")
 
         w.write("<Folder><name>Coverage cells ($sizeM m)</name>\n")
-        for (c in CoverageGrid.pingCells(pings, sizeM)) {
+        for (c in CoverageGrid.pingCells(pings, sizeM, sc)) {
             val desc = buildString {
                 append("Pings: ${c.count}\nAnswered: ${c.ok}\nNo response: ${c.fail}")
+                if (c.weakFail > 0) append("\nUnconfirmed (poor conditions): ${c.weakFail}")
+                when (c.trend) {
+                    CoverageGrid.Trend.NEW -> append("\nNew coverage")
+                    CoverageGrid.Trend.LOST -> append("\nCoverage lost")
+                    else -> Unit
+                }
                 c.successPct?.let { append("\nSuccess: $it %") }
                 c.bestSnr?.let { append("\nBest SNR: ${f1(it)} dB") }
                 c.avgSnr?.let { append("\nAverage SNR: ${f1(it)} dB") }
@@ -160,7 +175,7 @@ object CoverageExport {
                 p.ackHops?.let { append("\nHops: $it") }
                 p.latencyMs?.let { append("\nLatency: $it ms") }
             }
-            pointPlacemark(w, p.lat, p.lon, p.text.split(' ').take(2).joinToString(" "), desc,
+            pointPlacemark(w, p.effLat, p.effLon, p.text.split(' ').take(2).joinToString(" "), desc,
                 CoverageGrid.pingColor(p), p.ts)
         }
         w.write("</Folder>\n")
