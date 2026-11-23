@@ -9,12 +9,17 @@ App Android para mapear la cobertura de una red **Meshtastic** mientras te mueve
 **Autor:** EB7BWD
 
 <p align="center">
-  <img src="docs/screenshots/map.png" width="16%" alt="Mapa de calor">
-  <img src="docs/screenshots/nodes.png" width="16%" alt="Nodos">
-  <img src="docs/screenshots/connection.png" width="16%" alt="Conexión">
-  <img src="docs/screenshots/analysis.png" width="16%" alt="Datos y análisis">
-  <img src="docs/screenshots/log.png" width="16%" alt="Registro">
-  <img src="docs/screenshots/settings.png" width="16%" alt="Ajustes">
+  <img src="docs/screenshots/map.png" width="19%" alt="Mapa de calor">
+  <img src="docs/screenshots/coverage.png" width="19%" alt="Mapa de cobertura con estimación">
+  <img src="docs/screenshots/coverage-cell.png" width="19%" alt="Ficha de una celda estimada">
+  <img src="docs/screenshots/layers.png" width="19%" alt="Capas del mapa">
+  <img src="docs/screenshots/connection.png" width="19%" alt="Conexión">
+</p>
+<p align="center">
+  <img src="docs/screenshots/analysis.png" width="19%" alt="Datos y análisis">
+  <img src="docs/screenshots/noise.png" width="19%" alt="Gráfica de ruido y repetidores">
+  <img src="docs/screenshots/log.png" width="19%" alt="Registro">
+  <img src="docs/screenshots/settings.png" width="19%" alt="Ajustes">
 </p>
 
 ## Descargar
