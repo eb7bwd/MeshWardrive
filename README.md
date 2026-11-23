@@ -13,12 +13,11 @@ Android app for mapping the coverage of a **Meshtastic** network while you move 
   <img src="docs/screenshots/coverage.png" width="19%" alt="Coverage map with estimate">
   <img src="docs/screenshots/coverage-cell.png" width="19%" alt="Sheet of an estimated cell">
   <img src="docs/screenshots/layers.png" width="19%" alt="Map layers">
-  <img src="docs/screenshots/connection.png" width="19%" alt="Connection">
 </p>
 <p align="center">
+  <img src="docs/screenshots/connection.png" width="19%" alt="Connection">
   <img src="docs/screenshots/analysis.png" width="19%" alt="Data and analysis">
   <img src="docs/screenshots/noise.png" width="19%" alt="Noise chart and repeaters">
-  <img src="docs/screenshots/log.png" width="19%" alt="Log">
   <img src="docs/screenshots/settings.png" width="19%" alt="Settings">
 </p>
 
